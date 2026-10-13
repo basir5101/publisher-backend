@@ -64,16 +64,16 @@ function isDeepSeekOffPeak(now = new Date()) {
 // - 'amr' runs every hour at :15 with limit 5  (01:15, 02:15, ...)
 // =============================================================================
 export const PUBLISHER_SCHEDULES = [
-  { prefix: "amr", minute: 5,limit: 8 },
-  { prefix: "mra", minute: 10,limit: 8 },
-  { prefix: "dim", minute:  15,limit: 12 },
-  { prefix: "dir", minute:  20,limit: 16 },
-  { prefix: "sdi", minute: 25 ,limit: 6 },
-  { prefix: "miq", minute:  30,limit: 6 },
-  { prefix: "pmr", minute:  35,limit: 8 },
-  { prefix: "mpu", minute:  40,limit: 5 },
-  { prefix: "idi", minute:  45,limit: 5 },
-  { prefix: "rih", minute:  50,limit: 5 },
+    { prefix: "amr", minute: 5, limit: 8 },
+    { prefix: "mra", minute: 10, limit: 8 },
+    { prefix: "dim", minute: 15, limit: 12 },
+    { prefix: "dir", minute: 20, limit: 16 },
+    { prefix: "sdi", minute: 25, limit: 6 },
+    { prefix: "miq", minute: 30, limit: 6 },
+    { prefix: "pmr", minute: 35, limit: 8 },
+    { prefix: "mpu", minute: 40, limit: 5 },
+    { prefix: "idi", minute: 45, limit: 5 },
+    { prefix: "rih", minute: 50, limit: 5 },
 ]
 
 let isRunning = false;
@@ -167,9 +167,17 @@ process.on('SIGTERM', () => {
 
 // Direct CLI entry point
 // Resolve both paths to handle symlinks and PM2 argv manipulation
-const _resolvedArgv = realpathSync(process.argv[1]);
-const _resolvedSelf = realpathSync(fileURLToPath(import.meta.url));
-if (_resolvedArgv === _resolvedSelf) {
+let isMain = false;
+try {
+    const _resolvedArgv = realpathSync(process.argv[1]);
+    const _resolvedSelf = realpathSync(fileURLToPath(import.meta.url));
+    isMain = (_resolvedArgv === _resolvedSelf);
+} catch (e) {
+    // Ignore errors if process.argv[1] is undefined
+}
+
+// Execute if it's the main module OR if running inside PM2
+if (isMain || process.env.PM2_HOME) {
     const args = process.argv.slice(2);
     const isAll = args.includes('--all');
     const isOnce = args.includes('--once');
