@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { publishNewReport } from './publish_new_report.js';
 
@@ -165,7 +166,10 @@ process.on('SIGTERM', () => {
 });
 
 // Direct CLI entry point
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Resolve both paths to handle symlinks and PM2 argv manipulation
+const _resolvedArgv = realpathSync(process.argv[1]);
+const _resolvedSelf = realpathSync(fileURLToPath(import.meta.url));
+if (_resolvedArgv === _resolvedSelf) {
     const args = process.argv.slice(2);
     const isAll = args.includes('--all');
     const isOnce = args.includes('--once');
