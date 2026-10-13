@@ -1,0 +1,26 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Browser caches (Puppeteer/Playwright)
+browser_user_data*/
+browser_user_data/
+browser_user_data_2/
+browser_user_data_3/
+
+# Environment
+.env
+.env.local
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# Logs and Credentials
+*.log
+credentials.json
+token.json
+reports/

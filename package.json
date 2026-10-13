@@ -1,0 +1,29 @@
+{
+  "name": "node_scrapper",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1140.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.8.4",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "google-auth-library": "^11.1.0",
+    "googleapis": "^181.0.0",
+    "marked": "^18.0.14",
+    "p-limit": "^7.3.3",
+    "pg": "^8.23.0",
+    "playwright": "^1.62.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "showdown": "^2.1.0",
+    "xml2js": "^0.6.2"
+  }
+}
