@@ -213,6 +213,7 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                     const items = serperResponse.data?.organic || [];
                     const validCompetitors = items.filter(item => item.link && !EXCLUDED_DOMAINS.some(domain => item.link.toLowerCase().includes(domain.toLowerCase())));
                     competitorUrls = validCompetitors.slice(0, 5).map(item => item.link);
+                    console.log("competitorUrls", competitorUrls)
                 } catch (e) {
                     console.error(`[${keyword}] ❌ Serper error:`, e.message);
                 }
@@ -248,6 +249,7 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                         const primaryItems = primarySerper.data?.organic || [];
                         // Exclude .pdf for now to avoid robust binary parsing breaks, stick to HTML articles
                         primarySourceUrls = primaryItems.filter(item => item.link && !item.link.toLowerCase().endsWith('.pdf')).slice(0, 2).map(i => i.link);
+                        console.log("primarySourceUrls", primarySourceUrls)
                     } catch (e) {
                         console.error(`[${keyword}] ❌ Primary Serper search error:`, e.message);
                     }
