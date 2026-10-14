@@ -136,10 +136,10 @@ export async function updateR2Content(
             success: true,
         };
     } catch (error) {
-        console.error("Failed to upload RD to R2:", error);
+        console.error(`Failed to upload ${r2Key} to R2 (${bucket} bucket):`, error.message || error);
         return {
             success: false,
-            error: "Failed to upload RD to R2",
+            error: error.message || "Failed to upload to R2",
         };
     }
 }

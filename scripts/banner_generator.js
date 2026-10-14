@@ -18,7 +18,7 @@ export const PUBLISHER_THEMES = {
     }
   },
   amr: {
-    logoSrc: "https://images.datainsightsmarket.com/amr/Final+Logo.png",
+    logoSrc: "https://multisite-public.s3.ap-south-1.amazonaws.com/amr/2025-12-29/2fylowxYFC746xxyFinal_Logo.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -1057,15 +1057,33 @@ export async function generateBannerScreenshot({
 
   const html = generateBannerHtml(bannerData);
 
-  // Set viewport to high-resolution standard banner scale
-  await page.setViewportSize({ width: 1200, height: 630 });
+  // Set viewport to comfortably contain the banner without scrolling or clipping
+  await page.setViewportSize({ width: 1200, height: 800 });
 
-  // Set page content
-  await page.setContent(html, { waitUntil: 'load' });
+  // Load DOM with a safe timeout
+  await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-  // Wait for fonts to be ready
+  // Bounded wait for fonts and images (max 3s) so slow external assets never hang the cron
   try {
-    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(async () => {
+      if (document.fonts) {
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
+      }
+      const imgs = Array.from(document.querySelectorAll('img'));
+      await Promise.all(
+        imgs.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 3000);
+          });
+        })
+      );
+    });
   } catch (e) {
     await page.waitForTimeout(1000);
   }

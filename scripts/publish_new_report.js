@@ -181,11 +181,18 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
         }
 
         const isHeadless = process.env.HEADLESS !== 'false';
-        const browser = await chromium.launch({ headless: isHeadless });
+        const browser = await chromium.launch({
+            headless: isHeadless,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+            ],
+        });
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         });
-        const page = await context.newPage();
 
         const limiter = pLimit(CONCURRENCY);
 
@@ -435,6 +442,7 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
 
                     // 4. Generate and Upload Valuation Banner Image
                     let imageR2Key = null;
+                    const bannerPage = await context.newPage();
                     try {
                         const bannerConfig = buildBannerData({
                             prefix: prefix,
@@ -448,7 +456,7 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                         });
 
                         const bannerResult = await generateBannerScreenshot({
-                            page,
+                            page: bannerPage,
                             bannerData: bannerConfig,
                         });
 
@@ -463,6 +471,8 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                         }
                     } catch (bannerErr) {
                         console.error(`[${keyword}] ❌ Banner generation failed:`, bannerErr.message);
+                    } finally {
+                        await bannerPage.close().catch(() => {});
                     }
 
                     // Save to Cloudflare R2
