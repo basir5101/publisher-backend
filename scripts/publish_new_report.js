@@ -57,9 +57,12 @@ const normalizeMarketSize = (rawSize) => {
 const sanitizeRdContent = (content) => {
     if (!content || typeof content !== 'string') return '';
 
+    // 0. Remove any FAQ section if accidentally appended to rd_content (since FAQ has its own dedicated field)
+    let text = content.replace(/##\s*(?:Frequently Asked Questions|FAQ|Common Questions)[\s\S]*$/i, '');
+
     // 1. Remove entire ASCII box diagrams (e.g. +-------+ ... +-------+)
     // Matches multi-line or single-line blocks starting with +--- and ending after +---+
-    let text = content.replace(/\+[-=]{4,}\+[\s\S]*?\+[-=]{4,}\+/g, '');
+    text = text.replace(/\+[-=]{4,}\+[\s\S]*?\+[-=]{4,}\+/g, '');
 
     // Also remove any remaining +-----+ lines or trailing diagram fragments
     text = text.replace(/^[ \t]*\+[-=]{3,}\+[ \t]*$/gm, '');
@@ -310,27 +313,36 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
 
                     if (compHtml) {
                         const seoData = extractSEOData(compHtml);
-                        const domain = new URL(compUrl).hostname.replace('www.', '');
-                        allCompetitorContent += `\n--- Competitor ${i + 1} (${domain}) ---\n${seoData}\n`;
+                        allCompetitorContent += `\n--- Industry Reference Data Document ${i + 1} ---\n${seoData}\n`;
                     }
                 }
 
                 // 3. AI Generation
 
-                const prompt = `You are an expert SEO market research analyst. Your task is to write a comprehensive, data-driven market research report entirely from scratch based on the provided competitor data.
+                const prompt = `You are a Principal Market Research Director and Senior Industry Analyst at a premier global market intelligence firm. Your task is to write an original, highly authoritative, data-driven market research report entirely from scratch based on the synthesized industry reference data.
 Target Keyword: "${keyword}"
 
-**Competitors' Content (Top Ranking Aggregated):**
+**Synthesized Industry Reference Data:**
 """
 ${allCompetitorContent}
 """
 
-**Related Primary Evidence & Trustworthy Sources:**
+**Related Primary Evidence & Authoritative Public Benchmarks:**
 """
 ${primaryEvidenceContent || "No additional primary evidence found."}
 """
 
-Based on the competitor data and primary evidence provided above, generate a highly detailed and original market research report optimized for search engines. Ensure you maintain deep domain expertise and professional formatting.
+CRITICAL EDITORIAL & BRANDING RULES (STRICT COMPLIANCE MANDATORY):
+1. ZERO MENTION OF COMPETITORS OR THIRD-PARTY MARKET RESEARCH WEBSITES:
+   - You MUST NEVER mention, cite, quote, name, attribute, or link to ANY competitor market research companies, research portals, or third-party report publishers anywhere in the entire output (including "rd_content", "methodology", "metadata", "faq", and "data").
+   - Strictly forbidden names & websites: Grand View Research, Fortune Business Insights, MarketsandMarkets, Allied Market Research, Mordor Intelligence, Technavio, IMARC Group, Precedence Research, Straits Research, Emergen Research, Expert Market Research, DataM Intelligence, Polaris Market Research, Vantage Market Research, or any competitor report URLs/domains.
+   - NEVER write phrases such as "According to competitor reports...", "Market research reports suggest...", "Third-party estimates indicate...", "Secondary sources report...", etc.
+   - Authoritative In-House Voice: You are writing as a senior, seasoned domain expert. Present ALL market sizes, CAGR rates, projections, supply chain insights, and competitive analyses strictly as OUR OWN proprietary, first-party primary research and expert interview findings.
+   - When citing secondary benchmarks or trade statistics, ONLY cite official multilateral/governmental institutions (e.g., UN Comtrade, World Bank, WTO, OECD, US ITC, Eurostat) or recognized non-profit technical standards / industry trade associations. NEVER cite commercial market research firms.
+
+2. ABSOLUTELY NO FAQ IN "rd_content":
+   - DO NOT include any FAQ, "## Frequently Asked Questions", "## FAQ", or Q&A section anywhere inside "rd_content".
+   - The FAQ content is rendered separately on our website via the dedicated "faq" JSON field. "rd_content" must strictly contain market analysis sections (e.g., Executive Overview, Drivers & Restraints, Value Chain, Trade & Supply Dynamics, Segmentation, Regional Outlook, Competitive Strategies).
 
 Important Data Extraction Rules:
 - "cagr": Provide a single, fixed percentage (e.g., "7.9").
@@ -338,7 +350,7 @@ Important Data Extraction Rules:
 - "volumeUnit": If this is a volume-based market report (e.g., Kilotons), output the unit here. Otherwise, leave blank.
 - "region": Extract the geographic scope (e.g., "Global", "Canada", etc). Use the format "Global/country/contenent".
 - "regions": Provide a geography segmentation array. For global reports: ["Continent 1(Country 1, Country 2)", "Continent 2(Country 1, Country 2)"]. For region/country reports, use directional divisions (e.g., ["East", "West"]) or just the country name.
-- "segments" & "companies": Synthesize an exhaustive list by combining data from all competitor domains. EXCLUDE Geography/Regional segments.
+- "segments" & "companies": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.
 - "developments": Extract any recent market developments, product launches, or acquisitions.
 
 Methodology & Chart Data Generation Rules:
@@ -347,7 +359,7 @@ Act as a Senior Market Research Analyst generating the full "Research Methodolog
 - 70/30 research split: 70–80% primary research, 20–30% secondary research.
 - Guaranteed estimated data accuracy level of 85–90%.
 - Top-down and bottom-up methodologies used simultaneously, validated via multi-level data triangulation.
-- Standard financial databases: Bloomberg, Factiva, Hoovers, and PitchBook. Also cite .gov, .org, and trade association sources (do NOT cite market research websites). Add HTML anchor tags with real source URLs where available.
+- Standard financial databases: Bloomberg, Factiva, Hoovers, and PitchBook. Also cite official .gov, .org, and recognized non-profit trade association sources (ABSOLUTELY NEVER cite market research websites or competitor firms). Add HTML anchor tags with real source URLs where available for official institutions.
 - Every report is updated to the date of purchase.
 
 **Dynamic Elements (infer from the market title and segment/region data — be SPECIFIC, never generic):**
@@ -380,7 +392,7 @@ Return your response AS PURE JSON in this exact format:
     "title": "Optimized SEO title targeting the keyword (Max 60 characters)",
     "meta_description": "Compelling meta description with CAGR and market size (Max 155 characters)"
   },
-  "rd_content": "Extensive Markdown string (~2000 words). MUST contain exactly 6-8 distinct sections starting with ##. If the market keyword corresponds to a physical product or tradable commodity that relies on supply chains, you MUST thoughtfully analyze if there is clear import/export, vendor, or supplier data available. If there is, conditionally include a dedicated '## Import/Export & Supplier Dynamics' section, breaking down the information either regionally or company-wise based on available data. OPTIONAL SECTIONS - pick any that genuinely add value for this specific market (do NOT include a section just to fill space; skip any that would be generic or repetitive): '## Value Chain Analysis', '## Global Trade Analysis & Supply Chain Risk Assessment', '## Regional Attractiveness & Investment Opportunity Assessment', '## Strategic White-Space Analysis', '## Procurement & Sourcing Strategy Analysis', '## Ansoff Matrix Analysis'. Only include an optional section if it meaningfully enriches the report for users or search engines. STRICT SEO REQUIREMENT: Maximize data density and scannability. Where a table genuinely aids comprehension (comparisons, feature matrices, multi-attribute overviews), use valid standard Markdown tables. For sections where prose or bullet points communicate content better, use those - do not force a table for every section. Avoid wall-of-text paragraphs (1-3 sentences max). Use bullet points liberally. Bold key metrics (CAGR, valuations). CRITICAL FORMATTING RESTRICTIONS: 1) DO NOT use LaTeX, MathJax, or output ANY mathematical equations (e.g., skip the formula for CAGR); just write the values in plain text. 2) ABSOLUTELY NO ASCII ART, TEXT DIAGRAMS, BOX DRAWINGS, OR FLOWCHARTS OF ANY KIND. NEVER output '+---+' or '|' character boxes. NEVER use arrows or connector markers like 'v', '^', '-->', '->', '=>'. NEVER use Unicode tree lines or box symbols ('├──', '│', '└──', '┌', '┐', '┴', '┬', '─', '▼', '▲'). EVERY piece of information MUST be conveyed exclusively via standard Markdown prose, standard Markdown bullet points ('- Point'), or valid standard Markdown tables (| Col 1 | Col 2 |\\n|---|---|\\n| Val 1 | Val 2 |).",
+  "rd_content": "Extensive Markdown string (~2000 words). MUST contain exactly 6-8 distinct sections starting with ##. CRITICAL RULE 1 - ABSOLUTELY NO FAQ SECTION: Do NOT include any '## Frequently Asked Questions', '## FAQ', or Q&A section under any circumstances (FAQ has its own dedicated field below). CRITICAL RULE 2 - ZERO COMPETITOR MENTION: Never cite, mention, name, or link to any competitor market research firms or commercial report portals. All data and analysis must be presented strictly as our own proprietary primary research and direct expert analysis. If the market keyword corresponds to a physical product or tradable commodity that relies on supply chains, you MUST thoughtfully analyze if there is clear import/export, vendor, or supplier data available. If there is, conditionally include a dedicated '## Import/Export & Supplier Dynamics' section, breaking down the information either regionally or company-wise based on available data. OPTIONAL SECTIONS - pick any that genuinely add value for this specific market (do NOT include a section just to fill space; skip any that would be generic or repetitive): '## Value Chain Analysis', '## Global Trade Analysis & Supply Chain Risk Assessment', '## Regional Attractiveness & Investment Opportunity Assessment', '## Strategic White-Space Analysis', '## Procurement & Sourcing Strategy Analysis', '## Ansoff Matrix Analysis'. Only include an optional section if it meaningfully enriches the report for users or search engines. STRICT SEO REQUIREMENT: Maximize data density and scannability. Where a table genuinely aids comprehension (comparisons, feature matrices, multi-attribute overviews), use valid standard Markdown tables. For sections where prose or bullet points communicate content better, use those - do not force a table for every section. Avoid wall-of-text paragraphs (1-3 sentences max). Use bullet points liberally. Bold key metrics (CAGR, valuations). CRITICAL FORMATTING RESTRICTIONS: 1) DO NOT use LaTeX, MathJax, or output ANY mathematical equations (e.g., skip the formula for CAGR); just write the values in plain text. 2) ABSOLUTELY NO ASCII ART, TEXT DIAGRAMS, BOX DRAWINGS, OR FLOWCHARTS OF ANY KIND. NEVER output '+---+' or '|' character boxes. NEVER use arrows or connector markers like 'v', '^', '-->', '->', '=>'. NEVER use Unicode tree lines or box symbols ('├──', '│', '└──', '┌', '┐', '┴', '┬', '─', '▼', '▲'). 3) ZERO FAQ OR FREQUENTLY ASKED QUESTIONS SECTIONS. 4) ZERO COMPETITOR NAMES OR WEBSITES. EVERY piece of information MUST be conveyed exclusively via standard Markdown prose, standard Markdown bullet points ('- Point'), or valid standard Markdown tables (| Col 1 | Col 2 |\\n|---|---|\\n| Val 1 | Val 2 |).",
   "faq": [
     { "question": "Natural user search query (How, What, Which, Why, Who)?", "answer": "2-4 sentences, containing at least one specific number, percentage, or named entity." }
   ],
