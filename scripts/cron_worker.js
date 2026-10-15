@@ -76,38 +76,110 @@ export const PUBLISHER_SCHEDULES = [
     { prefix: "rih", minute: 50, limit: 5 },
 ]
 
-let isRunning = false;
+// =============================================================================
+// 📬 ASYNC FIFO JOB QUEUE
+// Ensures no publisher job is ever skipped when prior jobs take > 5 minutes.
+// Jobs are enqueued and executed sequentially in FIFO order without overlapping.
+// =============================================================================
+
+export const jobQueue = [];
+let isProcessingQueue = false;
 let lastTriggeredMinute = -1;
 let tickTimer = null;
 
-export async function executePublishingJob(prefix, limit) {
+/**
+ * Enqueue a job. Returns a Promise that resolves when this specific job completes.
+ */
+export function enqueueJob(prefix, limit) {
     if (!isDeepSeekOffPeak()) {
         const now = new Date();
         console.log(`💤 [${now.toISOString()}] PEAK HOURS — Skipping [${prefix}]. DeepSeek charges full rate now. Will resume in off-peak window.`);
-        return;
+        return Promise.resolve({ skipped: true, reason: 'peak_hours' });
     }
 
-    if (isRunning) {
-        console.log(`⚠️ [${new Date().toISOString()}] Previous publishing job still active. Skipping [${prefix}] to prevent overlapping.`);
-        return;
+    return new Promise((resolve, reject) => {
+        // Prevent duplicate queue entries for the same prefix
+        const existingJob = jobQueue.find(j => j.prefix === prefix);
+        if (existingJob) {
+            console.log(`ℹ️ [${new Date().toISOString()}] Publisher [${prefix}] is already in queue. Updating limit if higher.`);
+            if (limit > existingJob.limit) existingJob.limit = limit;
+            const prevResolve = existingJob.resolve;
+            existingJob.resolve = (val) => { prevResolve(val); resolve(val); };
+            return;
+        }
+
+        jobQueue.push({
+            prefix,
+            limit,
+            resolve,
+            reject,
+            enqueuedAt: Date.now()
+        });
+
+        console.log(`📥 [${new Date().toISOString()}] Enqueued job: [${prefix}] (limit: ${limit}) | Queue depth: ${jobQueue.length}`);
+        processQueue();
+    });
+}
+
+/**
+ * Queue processor: processes queued publishing jobs one-by-one in FIFO order.
+ */
+async function processQueue() {
+    if (isProcessingQueue) {
+        return; // Active worker will process all queued items in loop
     }
 
-    isRunning = true;
-    const startTime = Date.now();
-    console.log(`\n------------------------------------------------------`);
-    console.log(`⏰ [${new Date().toISOString()}] Dispatching Job: Prefix [${prefix}], Limit [${limit}]`);
-    console.log(`------------------------------------------------------`);
+    isProcessingQueue = true;
 
     try {
-        await publishNewReport(prefix, limit);
-        const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`✅ [${new Date().toISOString()}] Job completed for [${prefix}] in ${durationSec}s`);
-    } catch (err) {
-        const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.error(`❌ [${new Date().toISOString()}] Job failed for [${prefix}] after ${durationSec}s:`, err.message || err);
+        while (jobQueue.length > 0) {
+            if (!isDeepSeekOffPeak()) {
+                const now = new Date();
+                console.log(`💤 [${now.toISOString()}] PEAK HOURS reached during queue processing. Halting ${jobQueue.length} pending job(s) until off-peak.`);
+                while (jobQueue.length > 0) {
+                    const dropped = jobQueue.shift();
+                    dropped.resolve({ skipped: true, reason: 'peak_hours' });
+                }
+                break;
+            }
+
+            const currentJob = jobQueue.shift();
+            const { prefix, limit, resolve, enqueuedAt } = currentJob;
+            const waitTimeSec = ((Date.now() - enqueuedAt) / 1000).toFixed(1);
+            const startTime = Date.now();
+
+            console.log(`\n======================================================`);
+            console.log(`🚀 [${new Date().toISOString()}] Executing Job: Prefix [${prefix}], Limit [${limit}]`);
+            if (parseFloat(waitTimeSec) > 5) {
+                console.log(`   (Waited ${waitTimeSec}s in queue behind prior job | Remaining in queue: ${jobQueue.length})`);
+            }
+            console.log(`======================================================`);
+
+            try {
+                await publishNewReport(prefix, limit);
+                const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+                console.log(`✅ [${new Date().toISOString()}] Job completed for [${prefix}] in ${durationSec}s`);
+                resolve({ success: true, durationSec });
+            } catch (err) {
+                const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+                console.error(`❌ [${new Date().toISOString()}] Job failed for [${prefix}] after ${durationSec}s:`, err.message || err);
+                resolve({ success: false, error: err.message, durationSec });
+            }
+
+            if (jobQueue.length > 0) {
+                console.log(`⏳ Queue has ${jobQueue.length} pending job(s). Pausing 3 seconds before next job...`);
+                await new Promise(r => setTimeout(r, 3000));
+            } else {
+                console.log(`✨ Queue is now empty. Worker idle, waiting for next scheduled minute.\n`);
+            }
+        }
     } finally {
-        isRunning = false;
+        isProcessingQueue = false;
     }
+}
+
+export async function executePublishingJob(prefix, limit) {
+    return enqueueJob(prefix, limit);
 }
 
 // Mode 1: Run all scheduled publishers sequentially in one pass
