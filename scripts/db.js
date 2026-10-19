@@ -18,6 +18,11 @@ const pool = new Pool({
     }
 });
 
+// Prevent Node process from crashing if an idle PostgreSQL client disconnects
+pool.on('error', (err) => {
+    console.error('⚠️ [PostgreSQL Pool] Unexpected error on idle client:', err.message);
+});
+
 export const query = (text, params) => pool.query(text, params);
 
 export default pool;

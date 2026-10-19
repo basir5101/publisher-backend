@@ -156,7 +156,14 @@ async function processQueue() {
             console.log(`======================================================`);
 
             try {
-                await publishNewReport(prefix, limit);
+                // Global watchdog: max 15 minutes per publishing batch to prevent infinite queue hang
+                const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+                await Promise.race([
+                    publishNewReport(prefix, limit),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error(`Timeout: Job for [${prefix}] exceeded 15 minutes`)), JOB_TIMEOUT_MS)
+                    )
+                ]);
                 const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
                 console.log(`✅ [${new Date().toISOString()}] Job completed for [${prefix}] in ${durationSec}s`);
                 resolve({ success: true, durationSec });
@@ -206,23 +213,38 @@ export function startMinuteDispatcher() {
 
     // Check every 30 seconds to accurately catch minute transitions
     tickTimer = setInterval(async () => {
-        const now = new Date();
-        const currentMinute = now.getMinutes();
+        try {
+            const now = new Date();
+            const currentMinute = now.getMinutes();
 
-        // Avoid firing multiple times within the same clock minute
-        if (currentMinute === lastTriggeredMinute) {
-            return;
-        }
+            // Avoid firing multiple times within the same clock minute
+            if (currentMinute === lastTriggeredMinute) {
+                return;
+            }
 
-        // Find matching schedule for this exact minute of the hour
-        const matchingSchedule = PUBLISHER_SCHEDULES.find(s => s.minute === currentMinute);
-        if (matchingSchedule) {
-            lastTriggeredMinute = currentMinute;
-            console.log(`\n🔔 Hourly Schedule Trigger at :${String(currentMinute).padStart(2, '0')}: Publisher [${matchingSchedule.prefix}] (limit: ${matchingSchedule.limit})`);
-            await executePublishingJob(matchingSchedule.prefix, matchingSchedule.limit);
+            // Find matching schedule for this exact minute of the hour
+            const matchingSchedule = PUBLISHER_SCHEDULES.find(s => s.minute === currentMinute);
+            if (matchingSchedule) {
+                lastTriggeredMinute = currentMinute;
+                console.log(`\n🔔 Hourly Schedule Trigger at :${String(currentMinute).padStart(2, '0')}: Publisher [${matchingSchedule.prefix}] (limit: ${matchingSchedule.limit})`);
+                executePublishingJob(matchingSchedule.prefix, matchingSchedule.limit).catch(err => {
+                    console.error(`❌ Background error for [${matchingSchedule.prefix}]:`, err.message || err);
+                });
+            }
+        } catch (tickErr) {
+            console.error(`❌ Error in minute tick dispatcher:`, tickErr.message || tickErr);
         }
     }, 30 * 1000);
 }
+
+// Global exception safety: log errors without crashing daemon
+process.on('uncaughtException', (err) => {
+    console.error(`💥 [${new Date().toISOString()}] Uncaught Exception:`, err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error(`💥 [${new Date().toISOString()}] Unhandled Rejection:`, reason?.message || reason);
+});
 
 // Graceful termination handling
 process.on('SIGINT', () => {
@@ -237,8 +259,7 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-// Direct CLI entry point
-// Resolve both paths to handle symlinks and PM2 argv manipulation
+// Direct CLI entry point & PM2 execution detection
 let isMain = false;
 try {
     const _resolvedArgv = realpathSync(process.argv[1]);
@@ -248,8 +269,17 @@ try {
     // Ignore errors if process.argv[1] is undefined
 }
 
-// Execute if it's the main module OR if running inside PM2
-if (isMain || process.env.PM2_HOME) {
+// Running under PM2? Check standard PM2 environment indicators
+const isRunningUnderPM2 = Boolean(
+    process.env.pm_id !== undefined ||
+    process.env.pm_exec_path !== undefined ||
+    process.env.PM2_HOME ||
+    process.env.PM2_USAGE
+);
+
+const isInvokedDirectly = isMain || isRunningUnderPM2 || (process.argv[1] && process.argv[1].includes('cron_worker'));
+
+if (isInvokedDirectly) {
     const args = process.argv.slice(2);
     const isAll = args.includes('--all');
     const isOnce = args.includes('--once');

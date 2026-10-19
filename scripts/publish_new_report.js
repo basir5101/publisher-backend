@@ -128,6 +128,151 @@ const sanitizeRdContent = (content) => {
     return cleanedLines.join('\n');
 };
 
+/**
+ * Safely parse JSON from LLM responses, repairing common issues:
+ * 1. Markdown codeblock backticks (```json ... ```)
+ * 2. Conversational text outside root object/array
+ * 3. Single-quoted keys
+ * 4. Trailing commas before } or ]
+ * 5. Incomplete/truncated JSON (unclosed strings, dangling keys, unclosed containers)
+ * 6. Literal unescaped control characters inside JSON strings
+ */
+function parseOrRepairJSON(raw, keyword = '') {
+    if (!raw || typeof raw !== 'string') {
+        throw new Error(`Invalid JSON input (type: ${typeof raw})`);
+    }
+
+    let cleaned = raw.trim();
+    if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
+    else if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
+    cleaned = cleaned.trim();
+
+    // Find outermost JSON structure boundaries
+    const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
+    let startIdx = -1;
+    let isObject = true;
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+        startIdx = firstBrace;
+        isObject = true;
+    } else if (firstBracket !== -1) {
+        startIdx = firstBracket;
+        isObject = false;
+    }
+
+    if (startIdx !== -1) {
+        const endChar = isObject ? '}' : ']';
+        const lastEnd = cleaned.lastIndexOf(endChar);
+        if (lastEnd > startIdx) {
+            cleaned = cleaned.substring(startIdx, lastEnd + 1);
+        } else {
+            cleaned = cleaned.substring(startIdx);
+        }
+    }
+
+    // 1. Direct parse attempt
+    try {
+        return JSON.parse(cleaned);
+    } catch (e1) {
+        // Proceed to repairs
+    }
+
+    // 2. Simple repairs: single-quoted keys and trailing commas
+    let str = cleaned.replace(/([{,]\s*)'([^']+)'(\s*:)/g, '$1"$2"$3');
+    str = str.replace(/,\s*([\}\]])/g, '$1');
+
+    try {
+        return JSON.parse(str);
+    } catch (e2) {
+        // Proceed to structural repairs
+    }
+
+    // 3. Structural repair for truncated/unclosed JSON
+    console.log(`   [${keyword}] ⚠️ JSON parse failed. Attempting structural repair...`);
+    let insideString = false;
+    let escapeNext = false;
+    const stack = [];
+
+    for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+        if (char === '"') {
+            insideString = !insideString;
+            continue;
+        }
+        if (!insideString) {
+            if (char === '{' || char === '[') {
+                stack.push(char);
+            } else if (char === '}') {
+                if (stack.length > 0 && stack[stack.length - 1] === '{') {
+                    stack.pop();
+                }
+            } else if (char === ']') {
+                if (stack.length > 0 && stack[stack.length - 1] === '[') {
+                    stack.pop();
+                }
+            }
+        }
+    }
+
+    let repaired = str;
+    if (insideString) {
+        repaired += '"';
+    }
+
+    // Remove dangling commas, colons, or incomplete keys at the end
+    repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/g, '');
+    repaired = repaired.replace(/:\s*$/g, ': null');
+    repaired = repaired.replace(/,\s*$/g, '');
+    repaired = repaired.replace(/:\s*""$/g, ': null');
+    repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
+
+    while (stack.length > 0) {
+        const openChar = stack.pop();
+        repaired = repaired.replace(/,\s*$/g, '');
+        if (openChar === '{') {
+            repaired += '}';
+        } else if (openChar === '[') {
+            repaired += ']';
+        }
+    }
+    repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
+
+    try {
+        return JSON.parse(repaired);
+    } catch (e3) {
+        // 4. Try escaping raw unescaped control characters in string literals
+        try {
+            const sanitized = repaired.replace(/[\u0000-\u001f]/g, (c) => {
+                if (c === '\n') return '\\n';
+                if (c === '\r') return '\\r';
+                if (c === '\t') return '\\t';
+                return '';
+            });
+            return JSON.parse(sanitized);
+        } catch (e4) {
+            const errPos = parseInt(e4.message.match(/position (\d+)/)?.[1] || '-1', 10);
+            let snippet = '';
+            if (errPos >= 0) {
+                const start = Math.max(0, errPos - 80);
+                const end = Math.min(repaired.length, errPos + 80);
+                snippet = `\nContext around position ${errPos}:\n` +
+                          repaired.substring(start, errPos) + " >>>HERE<<< " + repaired.substring(errPos, end);
+            }
+            throw new Error(`JSON parse and repair failed: ${e4.message}${snippet}`);
+        }
+    }
+}
+
 import { callDeepSeek } from './ai_calls.js';
 import { buildBannerData, generateBannerScreenshot } from './banner_generator.js';
 import pool from './db.js';
@@ -184,49 +329,52 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
         }
 
         const isHeadless = process.env.HEADLESS !== 'false';
-        const browser = await chromium.launch({
-            headless: isHeadless,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-            ],
-        });
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        });
+        let browser = null;
+        try {
+            browser = await chromium.launch({
+                headless: isHeadless,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                ],
+            });
+            const context = await browser.newContext({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            });
 
-        const limiter = pLimit(CONCURRENCY);
+            const limiter = pLimit(CONCURRENCY);
 
-        const processReport = async (report, index) => {
-            const { id, marketKeyword, categoryId, active } = report;
-            const keyword = ensureMarketWord(marketKeyword);
-            // Each concurrent job uses its own page
-            const jobPage = await context.newPage();
+            const processReport = async (report, index) => {
+                const { id, marketKeyword, categoryId, active } = report;
+                const keyword = ensureMarketWord(marketKeyword);
+                // Each concurrent job uses its own page
+                const jobPage = await context.newPage();
 
-            console.log(`🎯 [${index + 1}/${reports.length}] "${keyword}"`);
+                console.log(`🎯 [${index + 1}/${reports.length}] "${keyword}"`);
 
-            try {
-                // 1. Search Serper API
-                let competitorUrls = [];
                 try {
-                    const serperResponse = await axios({
-                        method: 'post',
-                        url: 'https://google.serper.dev/search',
-                        headers: {
-                            'X-API-KEY': process.env.SERPER_API_KEY,
-                            'Content-Type': 'application/json'
-                        },
-                        data: { q: `${keyword} size & cagr`, num: 10 }
-                    });
-                    const items = serperResponse.data?.organic || [];
-                    const validCompetitors = items.filter(item => item.link && !EXCLUDED_DOMAINS.some(domain => item.link.toLowerCase().includes(domain.toLowerCase())));
-                    competitorUrls = validCompetitors.slice(0, 5).map(item => item.link);
-                    console.log("competitorUrls", competitorUrls)
-                } catch (e) {
-                    console.error(`[${keyword}] ❌ Serper error:`, e.message);
-                }
+                    // 1. Search Serper API
+                    let competitorUrls = [];
+                    try {
+                        const serperResponse = await axios({
+                            method: 'post',
+                            url: 'https://google.serper.dev/search',
+                            headers: {
+                                'X-API-KEY': process.env.SERPER_API_KEY,
+                                'Content-Type': 'application/json'
+                            },
+                            data: { q: `${keyword} size & cagr`, num: 10 },
+                            timeout: 30000
+                        });
+                        const items = serperResponse.data?.organic || [];
+                        const validCompetitors = items.filter(item => item.link && !EXCLUDED_DOMAINS.some(domain => item.link.toLowerCase().includes(domain.toLowerCase())));
+                        competitorUrls = validCompetitors.slice(0, 5).map(item => item.link);
+                        console.log("competitorUrls", competitorUrls)
+                    } catch (e) {
+                        console.error(`[${keyword}] ❌ Serper error:`, e.message);
+                    }
 
                 if (competitorUrls.length === 0) {
                     console.error(`[${keyword}] ❌ No competitor URLs found. Skipping.`);
@@ -237,10 +385,10 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                 let trustedSources = [];
                 try {
                     const brainstormPrompt = `You are a researcher looking for primary market data on the "${keyword}". Generate ONE optimal Google search query using advanced operators to find the most authoritative, raw trade/business data. You MUST force the query to prioritize global trade databases if applicable by using operators like (site:comtradeplus.un.org OR site:trademap.org OR site:wits.worldbank.org OR site:oecd.org OR site:dataweb.usitc.gov OR site:ec.europa.eu). You MUST also include business metrics like ("market size" OR "revenue" OR "export" OR "import"). DO NOT use "filetype:pdf", we need standard HTML pages. You MUST exclude Wikipedia by adding "-site:wikipedia.org". Return ONLY a JSON array containing this one search string. Example: ["(site:comtradeplus.un.org OR site:wits.worldbank.org OR site:.gov) \\"pneumatic valves\\" AND (\\"import\\" OR \\"market size\\") -site:wikipedia.org"]. No backticks, no markdown. Just the array.`;
-                    const { text: brainstormText } = await callDeepSeek(brainstormPrompt, "deepseek-chat");
+                    const { text: brainstormText } = await callDeepSeek(brainstormPrompt, "deepseek-chat", { response_format: null });
                     // const { text: brainstormText } = await callGemini(brainstormPrompt, "gemini-3.8-flash", "application/json");
-                    const cleanedBrainstorm = brainstormText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    trustedSources = JSON.parse(cleanedBrainstorm);
+                    const parsedBrainstorm = parseOrRepairJSON(brainstormText, keyword);
+                    trustedSources = Array.isArray(parsedBrainstorm) ? parsedBrainstorm : [parsedBrainstorm];
                 } catch (error) {
                     console.error(`[${keyword}] ❌ Brainstorm query failed:`, error.message);
                 }
@@ -254,7 +402,8 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                             method: 'post',
                             url: 'https://google.serper.dev/search',
                             headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-                            data: { q: topQuery, num: 3 }
+                            data: { q: topQuery, num: 3 },
+                            timeout: 30000
                         });
                         const primaryItems = primarySerper.data?.organic || [];
                         // Exclude .pdf for now to avoid robust binary parsing breaks, stick to HTML articles
@@ -301,7 +450,8 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                                 url: 'https://api.zyte.com/v1/extract',
                                 auth: { username: process.env.ZYTE_API_KEY, password: '' },
                                 data: { url: compUrl, browserHtml: true },
-                                headers: { 'Accept-Encoding': 'gzip' }
+                                headers: { 'Accept-Encoding': 'gzip' },
+                                timeout: 60000
                             });
                             if (zyteResponse.data?.browserHtml) {
                                 compHtml = zyteResponse.data.browserHtml;
@@ -425,31 +575,23 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                 let insights;
                 try {
                     // To switch to DeepSeek natively, uncomment below:
-                    const { text, usage } = await callDeepSeek(prompt, "deepseek-chat");
+                    const { text, usage, finishReason } = await callDeepSeek(prompt, "deepseek-chat");
                     // const { text, usage } = await callGemini(prompt, "gemini-3.8-flash", "application/json");
-                    // Clean common LLM JSON artifacts
-                    let jsonStr = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-                    try {
-                        insights = JSON.parse(jsonStr);
-                    } catch (e) {
-                        console.log(`   [${keyword}] ⚠️ Initial JSON parse failed. Attempting to repair single-quoted keys and trailing commas...`);
-                        // Try to repair single-quoted keys which flash-lite sometimes generates: 'key': "val" -> "key": "val"
-                        let repaired = jsonStr.replace(/([{,]\s*)'([^']+)'(\s*:)/g, '$1"$2"$3');
-                        // Try removing trailing commas
-                        repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
-                        insights = JSON.parse(repaired);
+                    if (finishReason === 'length') {
+                        console.warn(`   [${keyword}] ⚠️ DeepSeek reached max_tokens limit (8192). JSON might be truncated.`);
                     }
+
+                    insights = parseOrRepairJSON(text, keyword);
 
                     if (insights.data?.marketSize) {
                         insights.data.marketSize = normalizeMarketSize(insights.data.marketSize);
                     }
 
-                    const methodologyHtml = makeLinksNofollow(converter.makeHtml(insights.methodology));
+                    const methodologyHtml = makeLinksNofollow(converter.makeHtml(insights.methodology || ''));
                     const finalMethodology = {
                         methodology_content: methodologyHtml,
-                        chart_data_companies: insights.chart_data_companies,
-                        chart_data_stakeholders: insights.chart_data_stakeholders
+                        chart_data_companies: insights.chart_data_companies || [],
+                        chart_data_stakeholders: insights.chart_data_stakeholders || []
                     };
 
                     // 4. Generate and Upload Valuation Banner Image
@@ -511,8 +653,8 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                         categoryId: categoryId,
                         meta_title: insights.metadata?.title,
                         meta_description: insights.metadata?.meta_description,
-                        ...insights.data,
-                        faq: insights.faq,
+                        ...(insights.data || {}),
+                        faq: insights.faq || [],
                         rd_r2_key: rdKey,
                         rm_r2_key: rmKey,
                         image_r2_key: imageR2Key,
@@ -532,12 +674,15 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
             }
         };
 
-        // Run all reports concurrently with p-limit
-        await Promise.all(
-            reports.map((report, index) => limiter(() => processReport(report, index)))
-        );
-
-        await browser.close();
+            // Run all reports concurrently with p-limit
+            await Promise.all(
+                reports.map((report, index) => limiter(() => processReport(report, index)))
+            );
+        } finally {
+            if (browser) {
+                await browser.close().catch(() => {});
+            }
+        }
     } catch (err) {
         console.error('Error executing query:', err.stack);
         throw err;

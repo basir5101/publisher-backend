@@ -34,8 +34,21 @@ export async function callGemini(prompt, modelName = "gemini-3.5-flash", respons
  * @param {string} modelName - Deepseek model name (e.g., 'deepseek-chat')
  * @returns {Promise<{text: string, usage: any}>}
  */
-export async function callDeepSeek(prompt, modelName = 'deepseek-chat') {
+export async function callDeepSeek(prompt, modelName = 'deepseek-chat', options = {}) {
     if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is not defined");
+
+    const payload = {
+        model: modelName || 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: options.max_tokens || 8192
+    };
+
+    if (options.response_format !== null) {
+        payload.response_format = options.response_format || { type: 'json_object' };
+    }
+    if (options.temperature !== undefined) {
+        payload.temperature = options.temperature;
+    }
 
     const response = await axios({
         method: 'post',
@@ -44,23 +57,26 @@ export async function callDeepSeek(prompt, modelName = 'deepseek-chat') {
             'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
             'Content-Type': 'application/json'
         },
-        data: {
-            model: 'deepseek-v4-flash',
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' }
-        }
+        data: payload,
+        timeout: options.timeout || 240000
     });
 
-    const message = response.data.choices[0].message.content;
+    const choice = response.data.choices[0];
+    const message = choice?.message?.content || '';
     const usage = response.data.usage;
+
+    if (choice?.finish_reason === 'length') {
+        console.warn(`⚠️ [callDeepSeek] Response was truncated because it reached max_tokens limit (${payload.max_tokens})!`);
+    }
 
     // Normalize Deepseek token outputs to match Gemini interface style seamlessly
     return {
         text: message,
+        finishReason: choice?.finish_reason,
         usage: {
-            promptTokenCount: usage.prompt_tokens,
-            candidatesTokenCount: usage.completion_tokens,
-            totalTokenCount: usage.total_tokens
+            promptTokenCount: usage?.prompt_tokens,
+            candidatesTokenCount: usage?.completion_tokens,
+            totalTokenCount: usage?.total_tokens
         }
     };
 }
