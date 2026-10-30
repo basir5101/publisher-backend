@@ -277,7 +277,7 @@ import { callDeepSeek } from './ai_calls.js';
 import { buildBannerData, generateBannerScreenshot } from './banner_generator.js';
 import pool from './db.js';
 import { updateR2Asset, updateR2Content, updateR2Rd } from './r2_helper.js';
-import { findInactiveMarketKeywords, updateReport } from './report_queries.js';
+import { buildMarketSizeInMillions, findInactiveMarketKeywords, getUnitValue, updateReport } from './report_queries.js';
 
 dotenv.config();
 
@@ -318,13 +318,13 @@ export function ensureMarketWord(keyword) {
     // Appends "market" with a clean space if missing
     return `${trimmed} market`;
 }
-export async function publishNewReport(prefix = 'dim', limit = 1) {
+export async function publishNewReport(prefix = 'dim', limit = 1, id = null, customSegments = null) {
     const CONCURRENCY = parseInt(process.env.PUBLISH_CONCURRENCY, 10) || 3;
     try {
-        console.log(`\n🚀 [${prefix}] Publishing ${limit} report(s) — concurrency: ${CONCURRENCY}`);
-        const reports = await findInactiveMarketKeywords(prefix, limit);
+        console.log(`\n🚀 [${prefix}] Publishing ${id ? `report ID: ${id}` : `${limit} report(s)`} — concurrency: ${CONCURRENCY}`);
+        const reports = await findInactiveMarketKeywords(prefix, limit, id);
         if (!reports || reports.length === 0) {
-            console.log(`❌ No inactive market keywords found for prefix "${prefix}".`);
+            console.log(`❌ No inactive market keywords found for prefix "${prefix}"${id ? ` with ID ${id}` : ''}.`);
             return;
         }
 
@@ -347,8 +347,8 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
             const limiter = pLimit(CONCURRENCY);
 
             const processReport = async (report, index) => {
-                const { id, marketKeyword, categoryId, active } = report;
-                const keyword = ensureMarketWord(marketKeyword);
+                const { id, marketKeyword, categoryId, active, slug, content_key: originalContentKey } = report;
+                const keyword = ensureMarketWord(marketKeyword || report.markeKeyword);
                 // Each concurrent job uses its own page
                 const jobPage = await context.newPage();
 
@@ -468,6 +468,13 @@ export async function publishNewReport(prefix = 'dim', limit = 1) {
                 }
 
                 // 3. AI Generation
+                const hasCustomSegments = prefix === 'imd' && Array.isArray(customSegments) && customSegments.length > 0;
+                const segmentsInstruction = hasCustomSegments
+                    ? `- "segments": MANDATORY SEGMENTATION REQUIREMENT:
+   You MUST include the following base segments in the final output:
+${customSegments.map(s => `   * ${s}`).join('\n')}
+   CRITICAL: In addition to these mandatory base segments, carefully analyze the competitor and industry reference data to discover and append any additional sub-segments, categories, or components. The provided base segments MUST remain intact in the final output, enriched by any new segments found in competitor data.`
+                    : `- "segments": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.`;
 
                 const prompt = `You are a Principal Market Research Director and Senior Industry Analyst at a premier global market intelligence firm. Your task is to write an original, highly authoritative, data-driven market research report entirely from scratch based on the synthesized industry reference data.
 Target Keyword: "${keyword}"
@@ -500,7 +507,8 @@ Important Data Extraction Rules:
 - "volumeUnit": If this is a volume-based market report (e.g., Kilotons), output the unit here. Otherwise, leave blank.
 - "region": Extract the geographic scope (e.g., "Global", "Canada", etc). Use the format "Global/country/contenent".
 - "regions": Provide a geography segmentation array. For global reports: ["Continent 1(Country 1, Country 2)", "Continent 2(Country 1, Country 2)"]. For region/country reports, use directional divisions (e.g., ["East", "West"]) or just the country name.
-- "segments" & "companies": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.
+${segmentsInstruction}
+- "companies": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.
 - "developments": Extract any recent market developments, product launches, or acquisitions.
 
 Methodology & Chart Data Generation Rules:
@@ -600,7 +608,7 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                     try {
                         const bannerConfig = buildBannerData({
                             prefix: prefix,
-                            marketKeyword: marketKeyword,
+                            marketKeyword: marketKeyword || report.markeKeyword,
                             title: insights.metadata?.title,
                             cagr: insights.data?.cagr,
                             marketSize: insights.data?.marketSize,
@@ -633,6 +641,95 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                     const sanitizedRdContent = sanitizeRdContent(insights.rd_content || '');
                     const rawRdHtml = converter.makeHtml(sanitizedRdContent);
                     const rdHtml = makeLinksNofollow(rawRdHtml);
+                    if (["imd"].includes(prefix)) {
+                        // 1. Build Chart Data
+                        const { marketValue, unit } = getUnitValue(insights.data?.marketSize);
+                        const chart = buildMarketSizeInMillions({
+                            cagr: insights.data?.cagr,
+                            current_size: marketValue,
+                            current_year: insights.data?.baseYear,
+                            current_unit: unit || "million",
+                        });
+
+                        const chartData = {
+                            market_size: chart,
+                        };
+
+                        const regional_market_share = insights.regional_market_share || insights.data?.regional_market_share || null;
+                        if (regional_market_share && typeof regional_market_share === "object" && !Array.isArray(regional_market_share)) {
+                            const entries = Object.entries(regional_market_share);
+                            if (entries.length > 0) {
+                                const sum = entries.reduce((acc, [, v]) => acc + (parseFloat(v) || 0), 0);
+                                const cleaned = {};
+                                for (const [rName, rVal] of entries) {
+                                    const num = parseFloat(rVal) || 0;
+                                    cleaned[rName] = sum > 1.5 ? Math.round((num / sum) * 100) / 100 : Math.round(num * 100) / 100;
+                                }
+                                chartData.regional_market_share = cleaned;
+                            }
+                        }
+
+                        // 2. Build Single JSON bundle for R2 in "rd-content" bucket
+                        const r2Bundle = {
+                            rd: {
+                                content: rdHtml,
+                                chart: chartData,
+                            },
+                            methodology: {
+                                methodology_content: finalMethodology.methodology_content,
+                                chart_data_companies: finalMethodology.chart_data_companies,
+                                chart_data_stakeholders: finalMethodology.chart_data_stakeholders,
+                            },
+                            faq: insights.faq || [],
+                            dynamics: {
+                                drivers: insights.data?.drivers || [],
+                                trends: insights.data?.trends || [],
+                                restrains: insights.data?.restraints || [],
+                                restraints: insights.data?.restraints || [],
+                                challenges: insights.data?.challenges || [],
+                            },
+                            developments: insights.data?.developments || [],
+                        };
+
+                        const bundleKey = `rd-content/${prefix}/en/${id}.json`;
+                        const bundleJson = JSON.stringify(r2Bundle, null, 2);
+
+                        const uploadResult = await updateR2Content(
+                            bundleKey,
+                            bundleJson,
+                            'application/json',
+                            'rd-content'
+                        );
+
+                        if (uploadResult.success) {
+                            console.log(`✅ [${keyword}] Published JSON bundle to R2 "rd-content": ${bundleKey}`);
+                        } else {
+                            console.error(`[${keyword}] ❌ R2 bundle upload failed:`, uploadResult.error);
+                        }
+
+                        const summaryLog = {
+                            prefix: prefix,
+                            id: id,
+                            active,
+                            marketKeyword: keyword,
+                            categoryId: categoryId,
+                            meta_title: insights.metadata?.title,
+                            meta_description: insights.metadata?.meta_description,
+                            ...(insights.data || {}),
+                            content_key: bundleKey,
+                            image_r2_key: imageR2Key,
+                            price: {
+                                singlePrice: "2900.00",
+                                multiPrice: "4350.00",
+                                enterprisePrice: "5800.00",
+                            },
+                            noOfPages: Math.floor(Math.random() * (280 - 180 + 1)) + 180,
+                            noOfpages: Math.floor(Math.random() * (280 - 180 + 1)) + 180,
+                            regional_market_share: regional_market_share,
+                        };
+
+                        await updateReport(summaryLog);
+                    } else {
                     const rdKey = `rd/${prefix}/en/${id}.html`;
                     const rmKey = `methodology/${prefix}/en/${id}.json`;
 
@@ -662,6 +759,7 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                     };
 
                     await updateReport(summaryLog);
+                    }
 
                     if (usage) {
                         console.log(`   [${keyword}] Tokens: ${usage.totalTokenCount} (in: ${usage.promptTokenCount}, out: ${usage.candidatesTokenCount})`);
@@ -693,9 +791,14 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const targetPrefix = process.argv[2] || 'dim';
     const targetLimit = parseInt(process.argv[3], 10) || 1;
-    publishNewReport(targetPrefix, targetLimit)
+    const targetId = process.argv[4] ? (parseInt(process.argv[4], 10) || process.argv[4]) : null;
+    let targetSegments = null;
+    if (process.argv[5]) {
+        try { targetSegments = JSON.parse(process.argv[5]); } catch (e) { targetSegments = [process.argv[5]]; }
+    }
+    publishNewReport(targetPrefix, targetLimit, targetId, targetSegments)
         .then(() => {
-            console.log(`🏁 Execution finished for prefix: ${targetPrefix} (limit: ${targetLimit})`);
+            console.log(`🏁 Execution finished for prefix: ${targetPrefix} (limit: ${targetLimit}${targetId ? `, id: ${targetId}` : ''})`);
             process.exit(0);
         })
         .catch(err => {

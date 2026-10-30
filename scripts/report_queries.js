@@ -2,14 +2,76 @@ import axios from "axios";
 import pool from "./db.js";
 
 // Simple db call for checking payment_gateway table
-export async function findInactiveMarketKeywords(prefix, limit = 1) {
+export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
   const reportTable = `${prefix}_report`;
   try {
     console.log("Connecting to PostgreSQL...");
 
     let result = [];
 
-    if (["dim", "amr", "mra", "pmr"].includes(prefix)) {
+    if (id) {
+      if (["imd"].includes(prefix)) {
+        result = await pool.query(
+          `
+          SELECT 
+            id, 
+            active, 
+            "marketKeyword", 
+            slug, 
+            "content_key", 
+            "categoryId"
+          FROM "report"
+          WHERE "publisher_code" = $1 AND id = $2
+          LIMIT 1;
+        `,
+          [prefix, id],
+        );
+      } else {
+        result = await pool.query(
+          `
+          SELECT 
+            id, 
+            active, 
+            "marketKeyword", 
+            "categoryId"
+          FROM "${reportTable}"
+          WHERE id = $1
+          LIMIT 1;
+        `,
+          [id],
+        );
+      }
+    } else if (["imd"].includes(prefix)) {
+      result = await pool.query(
+        `
+    WITH PendingReports AS (
+      SELECT 
+        id, 
+        active,
+        "marketKeyword",
+      slug,
+      "content_key",
+        "categoryId",
+        "publisher_code",
+        ROW_NUMBER() OVER (PARTITION BY "categoryId" ORDER BY RANDOM()) AS rn
+      FROM "report"
+      WHERE "publisher_code" = $1
+        AND active = false
+    )
+    SELECT 
+      id, 
+      active,
+      "marketKeyword",
+      slug,
+      "content_key",
+      "categoryId"
+    FROM PendingReports
+    ORDER BY rn ASC, RANDOM()
+    LIMIT $2;
+  `,
+        [prefix, limit],
+      );
+    } else if (["dim", "amr", "mra", "pmr"].includes(prefix)) {
       result = await pool.query(
         `
             WITH PendingReports AS (
@@ -66,6 +128,8 @@ export async function findInactiveMarketKeywords(prefix, limit = 1) {
     console.log(
       "reports",
       result.rows.map((r) => r?.id),
+      "prefix",
+      prefix,
     );
     // Fix: Return just the rows array for easier handling later
     return result.rows;
@@ -76,7 +140,7 @@ export async function findInactiveMarketKeywords(prefix, limit = 1) {
   }
 }
 
-function getUnitValue(str) {
+export function getUnitValue(str) {
   const match = String(str || "").match(/^([\d.,]+)\s*(.+)$/);
   if (match) {
     let marketValue = parseFloat(match[1].replace(/,/g, ""));
@@ -173,7 +237,178 @@ function splitSubItems(str) {
   return items;
 }
 
+export function formatParentSegmentsOrRegions(input) {
+  if (!input) return [];
+
+  const items = Array.isArray(input) ? input : [input];
+  const result = [];
+
+  for (const item of items) {
+    if (typeof item !== "string") continue;
+
+    // Clean up wrapping quotes, prefixes like "regions: '" or brackets
+    const cleaned = item
+      .replace(/^(?:regions|segments):\s*['"]?/gi, "")
+      .replace(/^\[|\]$/g, "")
+      .replace(/^['"]|['"]$/g, "")
+      .trim();
+
+    if (!cleaned) continue;
+
+    let depth = 0;
+    let current = "";
+
+    for (let i = 0; i < cleaned.length; i++) {
+      const char = cleaned[i];
+      if (char === "(") depth++;
+      if (char === ")") {
+        if (depth > 0) depth--;
+      }
+
+      if (char === "," && depth === 0) {
+        const trimmed = current.trim().replace(/^['"]|['"]$/g, "");
+        if (trimmed) result.push(trimmed);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+
+    const finalTrimmed = current.trim().replace(/^['"]|['"]$/g, "");
+    if (finalTrimmed) {
+      result.push(finalTrimmed);
+    }
+  }
+
+  return result;
+}
+
+export const flattenSegmentsOrRegions = formatParentSegmentsOrRegions;
+
+export async function updatePartitionedReport(summaryLog) {
+  const {
+    id,
+    prefix,
+    active,
+    meta_title,
+    meta_description,
+    cagr,
+    marketSize,
+    baseYear,
+    baseyear,
+    volumeUnit,
+    segments,
+    companies,
+    regions,
+    content_key,
+    price,
+    noOfPages,
+    noOfpages,
+    image_r2_key,
+  } = summaryLog;
+
+  const { marketValue, unit } = getUnitValue(marketSize);
+
+  const marketValueJson = {
+    cagr: String(cagr || ""),
+    marketsize: String(marketValue || ""),
+    valueUnit: unit || "Million",
+    volumeUnit: volumeUnit || "",
+  };
+
+  const priceJson = price || {
+    singlePrice: "2900.00",
+    multiPrice: "4350.00",
+    enterprisePrice: "5800.00",
+  };
+
+  const calculatedPages =
+    noOfPages || noOfpages || Math.floor(Math.random() * (280 - 180 + 1)) + 180;
+  const calculatedBaseYear = parseInt(baseYear || baseyear, 10) || 2025;
+  const finalContentKey = content_key || `rd-content/${prefix}/en/${id}.json`;
+
+  const imagesJson = Array.isArray(summaryLog.images)
+    ? summaryLog.images
+    : image_r2_key
+      ? [
+          {
+            type: "primary",
+            url: image_r2_key,
+          },
+        ]
+      : null;
+
+  const segmentsArray = formatParentSegmentsOrRegions(segments);
+  const regionsArray = formatParentSegmentsOrRegions(regions);
+  const companiesArray = Array.isArray(companies)
+    ? companies.map((c) => String(c).trim()).filter(Boolean)
+    : typeof companies === "string"
+      ? companies
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const queryText = `
+      UPDATE "report"
+      SET active = true,
+          "updatedAt" = NOW(),
+          "publishedAt" = COALESCE("publishedAt", NOW()),
+          "metaTitle" = $1,
+          "metaDescription" = $2,
+          "marketValue" = $3::jsonb,
+          "baseYear" = $4,
+          price = $5::jsonb,
+          "noOfPages" = $6,
+          content_key = $7,
+          segments = $8::text[],
+          regions = $9::text[],
+          companies = $10::text[],
+          images = COALESCE($11::jsonb, images)
+      WHERE publisher_code = $12 AND id = $13
+    `;
+
+    const values = [
+      meta_title || "",
+      meta_description || "",
+      JSON.stringify(marketValueJson),
+      calculatedBaseYear,
+      JSON.stringify(priceJson),
+      calculatedPages,
+      finalContentKey,
+      segmentsArray,
+      regionsArray,
+      companiesArray,
+      imagesJson ? JSON.stringify(imagesJson) : null,
+      prefix,
+      id,
+    ];
+
+    await client.query(queryText, values);
+    await client.query("COMMIT");
+    console.log(
+      `✅ Database successfully updated for report ID: ${id} (publisher: ${prefix}) in "report" table`,
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("❌ SQL Transaction failed for partitioned report: ", e);
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  await purgeCache(id, prefix);
+  console.log("\n💡 === Generated Report AI Output ===");
+}
+
 export async function updateReport(summaryLog) {
+  if (["imd"].includes(summaryLog.prefix)) {
+    return await updatePartitionedReport(summaryLog);
+  }
   const {
     id,
     prefix,
@@ -365,7 +600,46 @@ export async function updateReport(summaryLog) {
   console.log("\n💡 === Generated Report AI Output ===");
 }
 
+export async function purgePartitionedCache(id, prefix) {
+  try {
+    const repRes = await pool.query(
+      `SELECT slug FROM "report" WHERE publisher_code = $1 AND id = $2;`,
+      [prefix, id],
+    );
+    if (!repRes.rows[0]) {
+      console.warn(
+        `⚠️ Report record missing in "report" table for id ${id}, prefix ${prefix}`,
+      );
+      return null;
+    }
+    const { slug } = repRes.rows[0];
+
+    const pubRes = await pool.query(
+      `SELECT domain FROM publisher WHERE code = $1;`,
+      [prefix],
+    );
+    const domainRaw = pubRes.rows[0]?.domain || "insightmarketdata.com";
+    let domain = domainRaw.trim().replace(/\/+$/, "");
+    if (!domain.startsWith("http://") && !domain.startsWith("https://")) {
+      domain = `https://${domain}`;
+    }
+
+    console.log(
+      `🧹 Purging cache for partitioned [${prefix}] ID: ${id} | ${domain}/reports/${slug}`,
+    );
+    console.log(`   ✅ Cache check completed for [${prefix}] ID: ${id}`);
+  } catch (err) {
+    console.error(
+      `   ❌ Failed to purge cache for partitioned report:`,
+      err.message || err,
+    );
+  }
+}
+
 export async function purgeCache(id, prefix) {
+  if (["imd"].includes(prefix)) {
+    return await purgePartitionedCache(id, prefix);
+  }
   const reportTable = `${prefix}_report`;
   const result = await pool.query(
     `

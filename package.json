@@ -4,6 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "server": "node server.js",
+    "cron": "node scripts/cron_worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",

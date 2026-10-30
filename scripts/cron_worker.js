@@ -1,3 +1,4 @@
+import axios from "axios";
 import dotenv from "dotenv";
 import { realpathSync } from "fs";
 import { fileURLToPath } from "url";
@@ -267,10 +268,55 @@ export async function runAllSequentially(overrideLimit) {
   console.log(`\n🏁 All publishers processed successfully.`);
 }
 
+// =============================================================================
+// 🗺️ SITEMAP GENERATION TRIGGER (Next.js Port 3000)
+// Automatically triggered twice daily at 2:00 AM and 2:00 PM local server time.
+// =============================================================================
+export async function triggerSitemapGeneration() {
+  const url =
+    process.env.SITEMAP_API_URL ||
+    "http://localhost:3000/api/v5/report/sitemap/generate";
+  console.log(
+    `🗺️ [${new Date().toISOString()}] Triggering Next.js sitemap generation at ${url}...`,
+  );
+
+  try {
+    const response = await axios.post(
+      url,
+      {},
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 300000, // 5 minutes timeout (sitemap generation can take time)
+      },
+    );
+
+    console.log(
+      `✅ [${new Date().toISOString()}] Sitemap generated successfully (Status: ${response.status}).`,
+    );
+    return { success: true, status: response.status, data: response.data };
+  } catch (error) {
+    const errorDetails = error.response
+      ? `Status ${error.response.status}: ${JSON.stringify(error.response.data)}`
+      : error.message;
+    console.error(
+      `❌ [${new Date().toISOString()}] Failed to generate sitemap:`,
+      errorDetails,
+    );
+    return { success: false, error: errorDetails };
+  }
+}
+
+let lastSitemapTriggerKey = "";
+
 // Mode 2: Minute tick dispatcher
 export function startMinuteDispatcher() {
   console.log(
     `🕒 Clock dispatcher started. Listening for scheduled minutes of the hour...\n`,
+  );
+  console.log(
+    `🗺️ Daily sitemap generation scheduled at 02:00 AM and 02:00 PM local server time.\n`,
   );
 
   // Check every 30 seconds to accurately catch minute transitions
@@ -278,6 +324,21 @@ export function startMinuteDispatcher() {
     try {
       const now = new Date();
       const currentMinute = now.getMinutes();
+      const currentHour = now.getHours(); // Local server time (0-23)
+
+      // Twice a day: 2:00 AM (hour 2) and 2:00 PM (hour 14) local server time
+      if (currentMinute === 0 && (currentHour === 2 || currentHour === 14)) {
+        const triggerKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${currentHour}`;
+        if (lastSitemapTriggerKey !== triggerKey) {
+          lastSitemapTriggerKey = triggerKey;
+          console.log(
+            `\n🗺️ [${now.toISOString()}] Scheduled Daily Trigger: Sitemap generation at ${currentHour === 2 ? "2:00 AM" : "2:00 PM"} local time.`,
+          );
+          triggerSitemapGeneration().catch((err) => {
+            console.error(`❌ Error in sitemap trigger:`, err.message || err);
+          });
+        }
+      }
 
       // Avoid firing multiple times within the same clock minute
       if (currentMinute === lastTriggeredMinute) {
@@ -360,7 +421,7 @@ const isRunningUnderPM2 = Boolean(
 
 const isInvokedDirectly =
   isMain ||
-  isRunningUnderPM2 ||
+  (isRunningUnderPM2 && (process.argv[1] && process.argv[1].includes("cron_worker") || process.env.pm_exec_path && process.env.pm_exec_path.includes("cron_worker"))) ||
   (process.argv[1] && process.argv[1].includes("cron_worker"));
 
 if (isInvokedDirectly) {

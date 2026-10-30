@@ -1,4 +1,3 @@
-
 export const PUBLISHER_THEMES = {
   mrf: {
     logoSrc: "https://images.datainsightsmarket.com/2024-05-01/logo4.webp",
@@ -14,11 +13,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#005697",
       forecastHeaderEnd: "#003964",
       chartBadgeBg: "#0064b0",
-      chartStroke: "#008FFB"
-    }
+      chartStroke: "#008FFB",
+    },
   },
   amr: {
-    logoSrc: "https://multisite-public.s3.ap-south-1.amazonaws.com/amr/2025-12-29/2fylowxYFC746xxyFinal_Logo.png",
+    logoSrc:
+      "https://multisite-public.s3.ap-south-1.amazonaws.com/amr/2025-12-29/2fylowxYFC746xxyFinal_Logo.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -31,8 +31,8 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#17645c",
       forecastHeaderEnd: "#0f423e",
       chartBadgeBg: "#1b746c",
-      chartStroke: "#26a69a"
-    }
+      chartStroke: "#26a69a",
+    },
   },
   dim: {
     logoSrc: "https://images.datainsightsmarket.com/dim/logo.png",
@@ -48,8 +48,8 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#225d91",
       forecastHeaderEnd: "#163e61",
       chartBadgeBg: "#276da9",
-      chartStroke: "#389BF2"
-    }
+      chartStroke: "#389BF2",
+    },
   },
   pmr: {
     logoSrc: "https://images.datainsightsmarket.com/pmr/logo.jpg",
@@ -65,8 +65,8 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#212b50",
       forecastHeaderEnd: "#161c35",
       chartBadgeBg: "#27325d",
-      chartStroke: "#374785"
-    }
+      chartStroke: "#374785",
+    },
   },
   mra: {
     logoSrc: "https://images.datainsightsmarket.com/mra/mra_logo.jpg",
@@ -82,11 +82,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#945812",
       forecastHeaderEnd: "#633b0c",
       chartBadgeBg: "#ad6715",
-      chartStroke: "#F7931E"
-    }
+      chartStroke: "#F7931E",
+    },
   },
   dir: {
-    logoSrc: "https://images.datainsightsmarket.com/dir/2025-12-25/qZbe74LEmkWrmfIuWhite-BG_LOGO.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/dir/2025-12-25/qZbe74LEmkWrmfIuWhite-BG_LOGO.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -99,11 +100,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#17645c",
       forecastHeaderEnd: "#0f423e",
       chartBadgeBg: "#1b746c",
-      chartStroke: "#26a69a"
-    }
+      chartStroke: "#26a69a",
+    },
   },
   miq: {
-    logoSrc: "https://images.datainsightsmarket.com/miq/2026-05-08/5XhTtgY3jQybN448logo2.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/miq/2026-05-08/5XhTtgY3jQybN448logo2.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -116,11 +118,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#014c99",
       forecastHeaderEnd: "#003266",
       chartBadgeBg: "#0158b3",
-      chartStroke: "#017EFF"
-    }
+      chartStroke: "#017EFF",
+    },
   },
   sdi: {
-    logoSrc: "https://images.datainsightsmarket.com/mra/2026-06-12/BE2qPOmgWJoY02ANlogo.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/mra/2026-06-12/BE2qPOmgWJoY02ANlogo.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -133,11 +136,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#014c99",
       forecastHeaderEnd: "#003266",
       chartBadgeBg: "#0158b3",
-      chartStroke: "#017EFF"
-    }
+      chartStroke: "#017EFF",
+    },
   },
   mpu: {
-    logoSrc: "https://images.datainsightsmarket.com/assets/publishers/c0ZaarINpXoCd2A4Logo_1_Light_BG.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/assets/publishers/c0ZaarINpXoCd2A4Logo_1_Light_BG.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -150,11 +154,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#006497",
       forecastHeaderEnd: "#004264",
       chartBadgeBg: "#0074b0",
-      chartStroke: "#00A6FB"
-    }
+      chartStroke: "#00A6FB",
+    },
   },
   idi: {
-    logoSrc: "https://images.datainsightsmarket.com/assets/publishers/j3I05waz7oNSmHlOLogo_Light_BG.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/assets/publishers/j3I05waz7oNSmHlOLogo_Light_BG.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -167,11 +172,12 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#17645c",
       forecastHeaderEnd: "#0f423e",
       chartBadgeBg: "#1b746c",
-      chartStroke: "#26A69A"
-    }
+      chartStroke: "#26A69A",
+    },
   },
   rih: {
-    logoSrc: "https://images.datainsightsmarket.com/assets/publishers/84QdvzwBVXun9SwMLogo_Dark_BG.png",
+    logoSrc:
+      "https://images.datainsightsmarket.com/assets/publishers/84QdvzwBVXun9SwMLogo_Dark_BG.png",
     theme: {
       primaryDark: "#0b192c",
       slateDark: "#2c3e50",
@@ -184,9 +190,27 @@ export const PUBLISHER_THEMES = {
       forecastHeaderStart: "#945812",
       forecastHeaderEnd: "#633b0c",
       chartBadgeBg: "#ad6715",
-      chartStroke: "#F7931E"
-    }
-  }
+      chartStroke: "#F7931E",
+    },
+  },
+  imd: {
+    logoSrc:
+      "https://images.datainsightsmarket.com/assets/publishers/nRlz8DCLy3qS6Tw7imd_logo.png",
+    theme: {
+      primaryDark: "#0b192c",
+      slateDark: "#2c3e50",
+      tealMain: "#2B7FFF",
+      tealDark: "#3BAFFF",
+      bgGradientStart: "#fef4e9",
+      bgGradientEnd: "#fde4c7",
+      baseHeaderStart: "#3BAFFF",
+      baseHeaderEnd: "#3BAFFF",
+      forecastHeaderStart: "#03265b",
+      forecastHeaderEnd: "#03265b",
+      chartBadgeBg: "#03265b",
+      chartStroke: "#2B7FFF",
+    },
+  },
 };
 
 /**
@@ -204,30 +228,30 @@ export const DEFAULT_BANNER_THEME = {
   forecastHeaderStart: "#2b4c6f",
   forecastHeaderEnd: "#1a324b",
   chartBadgeBg: "#3b5573",
-  chartStroke: "#389bf2"
+  chartStroke: "#389bf2",
 };
 
 /**
  * Format raw market size strings like "454 Million" or "3.2 Billion" or "$3.2B" into concise banner display "$3.2B" / "$454M"
  */
 export function formatCurrencyValue(val) {
-  if (!val) return '$1.0B';
+  if (!val) return "$1.0B";
   const str = String(val).trim();
-  if (str.startsWith('$')) return str;
+  if (str.startsWith("$")) return str;
 
   const numMatch = str.match(/[\d.,]+/);
   if (!numMatch) return str;
 
-  const num = parseFloat(numMatch[0].replace(/,/g, ''));
+  const num = parseFloat(numMatch[0].replace(/,/g, ""));
   const lower = str.toLowerCase();
 
-  if (lower.includes('trillion') || lower.includes('t')) {
+  if (lower.includes("trillion") || lower.includes("t")) {
     return `$${num}T`;
   }
-  if (lower.includes('billion') || lower.includes('b')) {
+  if (lower.includes("billion") || lower.includes("b")) {
     return `$${num}B`;
   }
-  if (lower.includes('million') || lower.includes('m')) {
+  if (lower.includes("million") || lower.includes("m")) {
     if (num >= 1000) {
       return `$${Number((num / 1000).toFixed(2))}B`;
     }
@@ -243,35 +267,47 @@ export function formatCurrencyValue(val) {
  * Parses numeric value in millions/billions to calculate projected growth
  */
 function parseNumericValue(val) {
-  if (!val) return { num: 100, unit: 'M' };
+  if (!val) return { num: 100, unit: "M" };
   const str = String(val).trim();
   const numMatch = str.match(/[\d.,]+/);
-  const num = numMatch ? parseFloat(numMatch[0].replace(/,/g, '')) : 100;
+  const num = numMatch ? parseFloat(numMatch[0].replace(/,/g, "")) : 100;
   const lower = str.toLowerCase();
 
-  if (lower.includes('trillion') || lower.includes('t')) {
-    return { num, unit: 'T', multiplier: 1000000 };
+  if (lower.includes("trillion") || lower.includes("t")) {
+    return { num, unit: "T", multiplier: 1000000 };
   }
-  if (lower.includes('billion') || lower.includes('b')) {
-    return { num, unit: 'B', multiplier: 1000 };
+  if (lower.includes("billion") || lower.includes("b")) {
+    return { num, unit: "B", multiplier: 1000 };
   }
   if (num >= 1000) {
-    return { num: Number((num / 1000).toFixed(2)), unit: 'B', multiplier: 1000 };
+    return {
+      num: Number((num / 1000).toFixed(2)),
+      unit: "B",
+      multiplier: 1000,
+    };
   }
-  return { num, unit: 'M', multiplier: 1 };
+  return { num, unit: "M", multiplier: 1 };
 }
 
 /**
  * Calculates forecast market size given base size, CAGR, and year range
  */
-export function calculateForecastMarketSize(baseMarketSize, cagrPercent, baseYear, forecastYear) {
-  const years = (parseInt(forecastYear, 10) || 2034) - (parseInt(baseYear, 10) || 2025);
-  const rate = (parseFloat(String(cagrPercent).replace(/[^0-9.]/g, '')) || 5.0) / 100;
+export function calculateForecastMarketSize(
+  baseMarketSize,
+  cagrPercent,
+  baseYear,
+  forecastYear,
+) {
+  const years =
+    (parseInt(forecastYear, 10) || 2034) - (parseInt(baseYear, 10) || 2025);
+  const rate =
+    (parseFloat(String(cagrPercent).replace(/[^0-9.]/g, "")) || 5.0) / 100;
   const { num, unit } = parseNumericValue(baseMarketSize);
 
   const projectedNum = num * Math.pow(1 + rate, Math.max(1, years));
-  const rounded = projectedNum >= 10 ? projectedNum.toFixed(1) : projectedNum.toFixed(2);
-  return `$${rounded.replace(/\.0$/, '')}${unit}`;
+  const rounded =
+    projectedNum >= 10 ? projectedNum.toFixed(1) : projectedNum.toFixed(2);
+  return `$${rounded.replace(/\.0$/, "")}${unit}`;
 }
 
 /**
@@ -286,7 +322,7 @@ export function generateYAxisLabels(forecastStr) {
     const val = (step * i).toFixed(step < 1 ? 1 : 0);
     labels.push(`$${val}${unit}`);
   }
-  labels.push('$0');
+  labels.push("$0");
   return labels;
 }
 
@@ -295,34 +331,38 @@ export function generateYAxisLabels(forecastStr) {
  */
 export function buildBannerData({
   prefix = "",
-  marketKeyword = 'Market',
-  title = '',
-  cagr = '6.4',
-  marketSize = '$3.2B',
-  baseYear = '2025',
-  forecastYear = '2034',
+  marketKeyword = "Market",
+  title = "",
+  cagr = "6.4",
+  marketSize = "$3.2B",
+  baseYear = "2025",
+  forecastYear = "2034",
   drivers = [],
   restraints = [],
 } = {}) {
   const publisherId = prefix.toLowerCase();
-  const activePublisher = PUBLISHER_THEMES[publisherId] || PUBLISHER_THEMES['dim'];
+  const activePublisher =
+    PUBLISHER_THEMES[publisherId] || PUBLISHER_THEMES["dim"];
 
   const { theme, logoSrc } = activePublisher;
 
-  const cleanBaseYear = String(baseYear || '2025');
-  const cleanForecastYear = String(forecastYear || (parseInt(cleanBaseYear, 10) + 9));
-  const cleanCagr = String(cagr || '6.4').replace(/[^0-9.]/g, '') || '6.4';
+  const cleanBaseYear = String(baseYear || "2025");
+  const cleanForecastYear = String(
+    forecastYear || parseInt(cleanBaseYear, 10) + 9,
+  );
+  const cleanCagr = String(cagr || "6.4").replace(/[^0-9.]/g, "") || "6.4";
 
   const formattedBaseSize = formatCurrencyValue(marketSize);
   const formattedForecastSize = calculateForecastMarketSize(
     formattedBaseSize,
     cleanCagr,
     cleanBaseYear,
-    cleanForecastYear
+    cleanForecastYear,
   );
 
   // Title formatting
-  const rawKeyword = marketKeyword.replace(/\bmarket\b/gi, '').trim() || 'Global';
+  const rawKeyword =
+    marketKeyword.replace(/\bmarket\b/gi, "").trim() || "Global";
   const mainTitle = `${rawKeyword} Market`;
   const pageTitle = title || `${mainTitle} - Valuation Banner`;
 
@@ -330,13 +370,18 @@ export function buildBannerData({
   const driverList = Array.isArray(drivers) ? drivers : [drivers];
   const restraintList = Array.isArray(restraints) ? restraints : [restraints];
 
-  const cleanDriverText = (driverList[0] || 'Expanding market adoption and growing industry demand.')
-    .replace(/\s+/g, ' ')
+  const cleanDriverText = (
+    driverList[0] || "Expanding market adoption and growing industry demand."
+  )
+    .replace(/\s+/g, " ")
     .trim()
     .slice(0, 85);
 
-  const cleanRestraintText = (restraintList[0] || 'Raw material price volatility and supply chain constraints.')
-    .replace(/\s+/g, ' ')
+  const cleanRestraintText = (
+    restraintList[0] ||
+    "Raw material price volatility and supply chain constraints."
+  )
+    .replace(/\s+/g, " ")
     .trim()
     .slice(0, 85);
 
@@ -350,7 +395,7 @@ export function buildBannerData({
     String(bYr + Math.round(span * 0.45)),
     String(bYr + Math.round(span * 0.65)),
     String(bYr + Math.round(span * 0.8)),
-    String(fYr)
+    String(fYr),
   ];
 
   const yAxisLabels = generateYAxisLabels(formattedForecastSize);
@@ -358,45 +403,45 @@ export function buildBannerData({
   return {
     theme: {
       ...DEFAULT_BANNER_THEME,
-      ...theme
+      ...theme,
     },
     content: {
       pageTitle,
       mainTitle,
-      subTitle: 'Market Valuation Analysis',
+      subTitle: "Market Valuation Analysis",
       logoSrc,
       baseYear: {
         title: `${cleanBaseYear} Base Year Valuation`,
         value: formattedBaseSize,
-        subtext: 'Total Market Size'
+        subtext: "Total Market Size",
       },
       cagr: {
         rate: `${cleanCagr}% CAGR`,
-        desc: 'Compound Annual Growth Rate'
+        desc: "Compound Annual Growth Rate",
       },
       forecastYear: {
         title: `${cleanForecastYear} Forecast Valuation`,
         value: formattedForecastSize,
-        subtext: 'Projected Market Size'
+        subtext: "Projected Market Size",
       },
       chart: {
         yAxisLabels,
         xAxisLabels,
         startBadge: `${cleanBaseYear}: ${formattedBaseSize}`,
-        endBadge: `${cleanForecastYear}: ${formattedForecastSize}`
+        endBadge: `${cleanForecastYear}: ${formattedForecastSize}`,
       },
       dynamics: {
-        title: 'Key Market Dynamics',
+        title: "Key Market Dynamics",
         driver: {
-          badge: 'Driver',
-          text: cleanDriverText
+          badge: "Driver",
+          text: cleanDriverText,
         },
         restraint: {
-          badge: 'Restraint',
-          text: cleanRestraintText
-        }
-      }
-    }
+          badge: "Restraint",
+          text: cleanRestraintText,
+        },
+      },
+    },
   };
 }
 
@@ -405,8 +450,23 @@ export function buildBannerData({
  */
 export function generateBannerHtml(data) {
   const { theme, content } = data;
-  const yLabels = content.chart.yAxisLabels || ['$6B', '$5B', '$4B', '$3B', '$2B', '$1B', '$0'];
-  const xLabels = content.chart.xAxisLabels || ['2025', '2027', '2029', '2031', '2032', '2034'];
+  const yLabels = content.chart.yAxisLabels || [
+    "$6B",
+    "$5B",
+    "$4B",
+    "$3B",
+    "$2B",
+    "$1B",
+    "$0",
+  ];
+  const xLabels = content.chart.xAxisLabels || [
+    "2025",
+    "2027",
+    "2029",
+    "2031",
+    "2032",
+    "2034",
+  ];
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -958,44 +1018,44 @@ export function generateBannerHtml(data) {
 
             <!-- Horizontal Grid Lines -->
             <line x1="50" y1="20" x2="510" y2="20" class="grid-line" />
-            <text x="36" y="24" text-anchor="end" class="axis-label">${yLabels[0] || '$6B'}</text>
+            <text x="36" y="24" text-anchor="end" class="axis-label">${yLabels[0] || "$6B"}</text>
 
             <line x1="50" y1="60" x2="510" y2="60" class="grid-line" />
-            <text x="36" y="64" text-anchor="end" class="axis-label">${yLabels[1] || '$5B'}</text>
+            <text x="36" y="64" text-anchor="end" class="axis-label">${yLabels[1] || "$5B"}</text>
 
             <line x1="50" y1="105" x2="510" y2="105" class="grid-line" />
-            <text x="36" y="109" text-anchor="end" class="axis-label">${yLabels[2] || '$4B'}</text>
+            <text x="36" y="109" text-anchor="end" class="axis-label">${yLabels[2] || "$4B"}</text>
 
             <line x1="50" y1="150" x2="510" y2="150" class="grid-line" />
-            <text x="36" y="154" text-anchor="end" class="axis-label">${yLabels[3] || '$3B'}</text>
+            <text x="36" y="154" text-anchor="end" class="axis-label">${yLabels[3] || "$3B"}</text>
 
             <line x1="50" y1="195" x2="510" y2="195" class="grid-line" />
-            <text x="36" y="199" text-anchor="end" class="axis-label">${yLabels[4] || '$2B'}</text>
+            <text x="36" y="199" text-anchor="end" class="axis-label">${yLabels[4] || "$2B"}</text>
 
             <line x1="50" y1="240" x2="510" y2="240" class="grid-line" />
-            <text x="36" y="244" text-anchor="end" class="axis-label">${yLabels[5] || '$1B'}</text>
+            <text x="36" y="244" text-anchor="end" class="axis-label">${yLabels[5] || "$1B"}</text>
 
             <line x1="50" y1="260" x2="510" y2="260" class="grid-line" />
-            <text x="36" y="264" text-anchor="end" class="axis-label">${yLabels[6] || '$0'}</text>
+            <text x="36" y="264" text-anchor="end" class="axis-label">${yLabels[6] || "$0"}</text>
 
             <!-- Vertical Year Lines -->
             <line x1="55" y1="20" x2="55" y2="260" class="grid-line" />
-            <text x="55" y="275" text-anchor="middle" class="axis-label">${xLabels[0] || '2025'}</text>
+            <text x="55" y="275" text-anchor="middle" class="axis-label">${xLabels[0] || "2025"}</text>
 
             <line x1="145" y1="20" x2="145" y2="260" class="grid-line" />
-            <text x="145" y="275" text-anchor="middle" class="axis-label">${xLabels[1] || '2027'}</text>
+            <text x="145" y="275" text-anchor="middle" class="axis-label">${xLabels[1] || "2027"}</text>
 
             <line x1="235" y1="20" x2="235" y2="260" class="grid-line" />
-            <text x="235" y="275" text-anchor="middle" class="axis-label">${xLabels[2] || '2029'}</text>
+            <text x="235" y="275" text-anchor="middle" class="axis-label">${xLabels[2] || "2029"}</text>
 
             <line x1="285" y1="20" x2="285" y2="260" class="grid-line" />
-            <text x="285" y="275" text-anchor="middle" class="axis-label">${xLabels[3] || '2031'}</text>
+            <text x="285" y="275" text-anchor="middle" class="axis-label">${xLabels[3] || "2031"}</text>
 
             <line x1="375" y1="20" x2="375" y2="260" class="grid-line" />
-            <text x="375" y="275" text-anchor="middle" class="axis-label">${xLabels[4] || '2032'}</text>
+            <text x="375" y="275" text-anchor="middle" class="axis-label">${xLabels[4] || "2032"}</text>
 
             <line x1="495" y1="20" x2="495" y2="260" class="grid-line" />
-            <text x="495" y="275" text-anchor="middle" class="axis-label">${xLabels[5] || '2034'}</text>
+            <text x="495" y="275" text-anchor="middle" class="axis-label">${xLabels[5] || "2034"}</text>
 
             <!-- Shaded Area Under Curve -->
             <path d="M 55 140
@@ -1047,12 +1107,11 @@ export function generateBannerHtml(data) {
  * Renders banner HTML and captures screenshot using Playwright page.
  * Returns a buffer directly — no file is written to disk.
  */
-export async function generateBannerScreenshot({
-  page,
-  bannerData,
-}) {
+export async function generateBannerScreenshot({ page, bannerData }) {
   if (!page) {
-    throw new Error('Playwright page instance is required to capture banner screenshot.');
+    throw new Error(
+      "Playwright page instance is required to capture banner screenshot.",
+    );
   }
 
   const html = generateBannerHtml(bannerData);
@@ -1061,7 +1120,10 @@ export async function generateBannerScreenshot({
   await page.setViewportSize({ width: 1200, height: 800 });
 
   // Load DOM with a safe timeout
-  await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.setContent(html, {
+    waitUntil: "domcontentloaded",
+    timeout: 15000,
+  });
 
   // Bounded wait for fonts and images (max 3s) so slow external assets never hang the cron
   try {
@@ -1072,7 +1134,7 @@ export async function generateBannerScreenshot({
           new Promise((resolve) => setTimeout(resolve, 3000)),
         ]);
       }
-      const imgs = Array.from(document.querySelectorAll('img'));
+      const imgs = Array.from(document.querySelectorAll("img"));
       await Promise.all(
         imgs.map((img) => {
           if (img.complete) return Promise.resolve();
@@ -1081,14 +1143,14 @@ export async function generateBannerScreenshot({
             img.onerror = resolve;
             setTimeout(resolve, 3000);
           });
-        })
+        }),
       );
     });
   } catch (e) {
     await page.waitForTimeout(1000);
   }
 
-  const container = await page.$('.banner-container');
+  const container = await page.$(".banner-container");
   let buffer;
   if (container) {
     buffer = await container.screenshot();

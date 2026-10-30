@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import {
+    DeleteObjectCommand,
     GetObjectCommand,
     PutObjectCommand,
     S3Client,
@@ -144,6 +145,16 @@ export async function updateR2Content(
     }
 }
 
+export async function deleteR2Content(key, bucket = 'rd') {
+    try {
+        await s3.send(new DeleteObjectCommand({ Bucket: getR2Bucket(bucket), Key: key }));
+        return { success: true };
+    } catch (err) {
+        console.warn(`[deleteR2Content] Failed to delete key "${key}":`, err.message);
+        return { success: false, error: err.message };
+    }
+}
+
 export async function readR2Content(key, bucket = "rd") {
     try {
         const resp = await s3.send(
@@ -167,6 +178,8 @@ function getR2Bucket(type) {
                 return process.env.RM_BUCKET;
             case "company":
                 return process.env.COMPANY_BUCKET;
+            case "rd-content":
+                return process.env.RD_CONTENT_BUCKET || "rd-content";
             case "cs":
                 return process.env.CS_BUCKET;
             case "image":
