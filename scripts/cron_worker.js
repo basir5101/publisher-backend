@@ -101,6 +101,7 @@ export const PUBLISHER_SCHEDULES = [
   { prefix: "mpu", minute: 40, limit: 10 },
   { prefix: "idi", minute: 45, limit: 10 },
   { prefix: "rih", minute: 50, limit: 10 },
+  { prefix: "imd", minute: 55, limit: 5 },
 ];
 
 // =============================================================================
