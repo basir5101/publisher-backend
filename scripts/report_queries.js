@@ -1,4 +1,5 @@
 import axios from "axios";
+import { isNewPublisher } from "./constants.js";
 import pool from "./db.js";
 
 // Simple db call for checking payment_gateway table
@@ -10,7 +11,7 @@ export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
     let result = [];
 
     if (id) {
-      if (["imd"].includes(prefix)) {
+      if (isNewPublisher(prefix)) {
         result = await pool.query(
           `
           SELECT 
@@ -41,7 +42,7 @@ export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
           [id],
         );
       }
-    } else if (["imd"].includes(prefix)) {
+    } else if (isNewPublisher(prefix)) {
       result = await pool.query(
         `
     WITH PendingReports AS (
@@ -406,7 +407,7 @@ export async function updatePartitionedReport(summaryLog) {
 }
 
 export async function updateReport(summaryLog) {
-  if (["imd"].includes(summaryLog.prefix)) {
+  if (isNewPublisher(summaryLog.prefix)) {
     return await updatePartitionedReport(summaryLog);
   }
   const {
@@ -637,7 +638,7 @@ export async function purgePartitionedCache(id, prefix) {
 }
 
 export async function purgeCache(id, prefix) {
-  if (["imd"].includes(prefix)) {
+  if (isNewPublisher(prefix)) {
     return await purgePartitionedCache(id, prefix);
   }
   const reportTable = `${prefix}_report`;
