@@ -114,15 +114,15 @@ const server = http.createServer(async (req, res) => {
         },
       });
 
-      // Trigger publishNewReport in background asynchronously
+      // Trigger publishNewReport in background asynchronously (always on-demand, bypasses off-peak filter)
       (async () => {
         console.log(
-          `\n🔔 [API Trigger] Received request from dashboard: prefix=${prefix}, id=${id || "auto"}, limit=${limit}${segments ? `, segments=${JSON.stringify(segments)}` : ""}`,
+          `\n🔔 [API Trigger] On-demand publish started (off-peak filter bypassed): prefix=${prefix}, id=${id || "auto"}, limit=${limit}${segments ? `, segments=${JSON.stringify(segments)}` : ""}`,
         );
         try {
           await publishNewReport(prefix, limit, id, segments);
           console.log(
-            `✅ [API Trigger] Finished publish job: prefix=${prefix}, id=${id || "auto"}`,
+            `✅ [API Trigger] Finished on-demand publish job: prefix=${prefix}, id=${id || "auto"}`,
           );
         } catch (err) {
           console.error(
