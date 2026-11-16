@@ -548,9 +548,9 @@ DATA EXTRACTION & VALUATION RULES (MANDATORY):
 - "cagr": Provide a single, fixed numeric percentage (e.g., "7.9"). Do NOT output "%", ranges (e.g., "7-8%"), or "Not available".
 - "marketSize": Provide a single, fixed numeric value for the base year with its unit (e.g., "454 Million" or "20.97 Billion"). DO NOT include currency symbols like "$" or "USD". If value is 1000 Million or higher, ALWAYS express in Billion (e.g. use "20.97 Billion", never "20,972.49 Million"). If exact figure is not explicitly stated in references, synthesize an authoritative, realistic estimate based on industry benchmarks. NEVER return "Not available", "not disclosed", or "0".
 - "baseYear": The base valuation year (e.g., "2024" or "2025").
-- "segments": List ALL non-geography segments. NEVER include "By Geography" or regions here.
-- "regions": Nested string: "North America(US, Canada), Europe(Germany, UK)..."
-- "geography_tree": Structured mirror of the region string.
+- "region": Extract the overall geographic scope: if no country or continent is mentioned in the market keyword, it MUST be "Global" (otherwise the specific country/continent name).
+- "regions": A nested geography string. CRITICAL: When the report is Global, DO NOT wrap with "Global(...)". Directly list the continents/regions as parents and their respective countries as children: "North America(USA, Canada, Mexico), Europe(Germany, UK, France, Italy), Asia Pacific(China, Japan, India, South Korea), Latin America(Brazil, Mexico, Argentina), Middle East & Africa(Saudi Arabia, UAE, South Africa)". If regional or country-specific, list sub-regions and states.
+- "segments": Synthesize an exhaustive list of non-geography segments in nested format: "Parent1(Child1, Child2), Parent2(Child1, Child2)". EXCLUDE geography and regional names from segments.
 
 MARKET SIZE SERIES RULES:
 - "market_size_series": Array of {"year": "YYYY", "value": "X.X Billion" or "X.X Million"}.
@@ -591,7 +591,6 @@ Structure the methodology with clear markdown sections:
 
 Return your response AS PURE JSON in this exact format:
 {
-  "scope": { "scope_level": "global", "scope_label": "Global", "sub_region_unit": "region" },
   "regional_market_share": {
     "North America": 0.28,
     "Europe": 0.24,
@@ -599,7 +598,6 @@ Return your response AS PURE JSON in this exact format:
     "South America": 0.04,
     "Middle East & Africa": 0.04
   },
-  "geography_tree": [ { "region": "Asia-Pacific", "children": [] } ],
   "metadata": {
     "title": "Keyword first, max 60 chars, current year",
     "meta_description": "Size + CAGR + clear benefit, 140-155 chars"
@@ -623,7 +621,7 @@ Return your response AS PURE JSON in this exact format:
   "sources": [],
   "author_credentials": "",
   "data": {
-    "region": "[scope_label]",
+    "region": "Global",
     "cagr": "7.9",
     "marketSize": "454 Million",
     "baseYear": "2025",
@@ -639,8 +637,8 @@ Return your response AS PURE JSON in this exact format:
       { "year": "2031", "value": "716 Million" }
     ],
     "trends": [], "restraints": [], "drivers": [], "challenges": [],
-    "segments": "By Component(Software, Hardware, Services), By Application(Clinical, Research)",
-    "regions": "[scope_label]()",
+    "segments": "By Type(Type A, Type B), By Application(Application 1, Application 2)",
+    "regions": "North America(USA, Canada, Mexico), Europe(Germany, UK, France, Italy), Asia Pacific(China, Japan, India, South Korea), Latin America(Brazil, Mexico, Argentina), Middle East & Africa(Saudi Arabia, UAE, South Africa)",
     "companies": [], "developments": []
   }
 }

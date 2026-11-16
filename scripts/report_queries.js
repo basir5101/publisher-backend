@@ -274,8 +274,16 @@ export function getUnitValue(str) {
 }
 
 function parseNestedString(input) {
+  if (!input || typeof input !== "string") return [];
+
   // Clean up wrapping quotes or prefixes like "regions: '"
-  const cleaned = input.replace(/regions:\s*['"]?/gi, "").replace(/['"]/g, "");
+  let cleaned = input.replace(/^(?:regions|segments):\s*['"]?/gi, "").replace(/['"]/g, "").trim();
+
+  // Defensive fallback: If accidentally wrapped in "Global(...)", unwrap it so continents/regions become the parent categories
+  const globalWrapMatch = cleaned.match(/^global\s*\(([\s\S]+)\)$/i);
+  if (globalWrapMatch) {
+    cleaned = globalWrapMatch[1].trim();
+  }
 
   const categories = [];
   let depth = 0;
