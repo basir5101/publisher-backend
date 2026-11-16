@@ -44,15 +44,9 @@ const makeLinksNofollow = (html) => {
 
 const normalizeMarketSize = (rawSize) => {
   if (!rawSize) return rawSize;
-  const match = String(rawSize).match(/^([\d.,]+)\s*(.+)$/);
-  if (match) {
-    let val = parseFloat(match[1].replace(/,/g, ""));
-    let unit = match[2].trim();
-    if (val >= 1000 && unit.toLowerCase().startsWith("million")) {
-      val = Number((val / 1000).toFixed(2));
-      unit = "Billion";
-      return `${val} ${unit}`;
-    }
+  const { marketValue, unit } = getUnitValue(rawSize);
+  if (marketValue > 0) {
+    return `${marketValue} ${unit}`;
   }
   return rawSize;
 };
@@ -308,6 +302,7 @@ import {
   generateBannerScreenshot,
 } from "./banner_generator.js";
 import { isNewPublisher } from "./constants.js";
+import { getSearchLocation, selectPromptForReport } from "./prompts.js";
 import pool from "./db.js";
 import { updateR2Asset, updateR2Content, updateR2Rd } from "./r2_helper.js";
 import {
@@ -414,17 +409,37 @@ export async function publishNewReport(
           active,
           slug,
           content_key: originalContentKey,
+          already_published_count = 0,
+          published_publishers = [],
         } = report;
         const keyword = ensureMarketWord(marketKeyword || report.markeKeyword);
+        const searchLocation = getSearchLocation(prefix, already_published_count);
         // Each concurrent job uses its own page
         const jobPage = await context.newPage();
 
-        console.log(`🎯 [${index + 1}/${reports.length}] "${keyword}"`);
+        if (isNewPublisher(prefix)) {
+          const pubInfo =
+            already_published_count > 0
+              ? `already active in ${already_published_count} publisher(s): [${published_publishers.join(", ")}] | Search location: ${searchLocation.name}`
+              : `fresh keyword (0 active publishers) | Search location: ${searchLocation.name}`;
+          console.log(
+            `🎯 [${index + 1}/${reports.length}] "${keyword}" — ${pubInfo}`,
+          );
+        } else {
+          console.log(`🎯 [${index + 1}/${reports.length}] "${keyword}"`);
+        }
 
         try {
           // 1. Search Serper API
           let competitorUrls = [];
           try {
+            const serperData = {
+              q: `${keyword} size & cagr`,
+              num: 10,
+              ...(searchLocation
+                ? { gl: searchLocation.gl, location: searchLocation.location }
+                : {}),
+            };
             const serperResponse = await axios({
               method: "post",
               url: "https://google.serper.dev/search",
@@ -432,7 +447,7 @@ export async function publishNewReport(
                 "X-API-KEY": process.env.SERPER_API_KEY,
                 "Content-Type": "application/json",
               },
-              data: { q: `${keyword} size & cagr`, num: 10 },
+              data: serperData,
               timeout: 30000,
             });
             const items = serperResponse.data?.organic || [];
@@ -484,6 +499,13 @@ export async function publishNewReport(
           if (trustedSources.length > 0) {
             try {
               const topQuery = trustedSources[0];
+              const primarySerperData = {
+                q: topQuery,
+                num: 3,
+                ...(searchLocation
+                  ? { gl: searchLocation.gl, location: searchLocation.location }
+                  : {}),
+              };
               const primarySerper = await axios({
                 method: "post",
                 url: "https://google.serper.dev/search",
@@ -491,7 +513,7 @@ export async function publishNewReport(
                   "X-API-KEY": process.env.SERPER_API_KEY,
                   "Content-Type": "application/json",
                 },
-                data: { q: topQuery, num: 3 },
+                data: primarySerperData,
                 timeout: 30000,
               });
               const primaryItems = primarySerper.data?.organic || [];
@@ -576,233 +598,24 @@ export async function publishNewReport(
           }
 
           // 3. AI Generation
-          const hasCustomSegments =
-            isNewPublisher(prefix) &&
-            Array.isArray(customSegments) &&
-            customSegments.length > 0;
-          const segmentsInstruction = hasCustomSegments
-            ? `- "segments": MANDATORY SEGMENTATION REQUIREMENT:
-   You MUST include the following base segments in the final output:
-${customSegments.map((s) => `   * ${s}`).join("\n")}
-   CRITICAL: In addition to these mandatory base segments, carefully analyze the competitor and industry reference data to discover and append any additional sub-segments, categories, or components. The provided base segments MUST remain intact in the final output, enriched by any new segments found in competitor data.`
-            : `- "segments": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.`;
+          const {
+            prompt: selectedPrompt,
+            promptName,
+            promptIndex,
+          } = selectPromptForReport({
+            prefix,
+            keyword,
+            allCompetitorContent,
+            primaryEvidenceContent,
+            customSegments,
+            activeOtherPublishersCount: already_published_count,
+          });
 
-          const prompt = `You are a Principal Market Research Director and Senior Industry Analyst at a premier global market intelligence firm. Your task is to write an original, highly authoritative, data-driven market research report entirely from scratch based on the synthesized industry reference data.
-          Target Keyword: "${keyword}"
-
-          **Synthesized Industry Reference Data:**
-          """
-          ${allCompetitorContent}
-          """
-
-          **Related Primary Evidence & Authoritative Public Benchmarks:**
-          """
-          ${primaryEvidenceContent || "No additional primary evidence found."}
-          """
-
-          CRITICAL EDITORIAL & BRANDING RULES (STRICT COMPLIANCE MANDATORY):
-          1. ZERO MENTION OF COMPETITORS OR THIRD-PARTY MARKET RESEARCH WEBSITES:
-             - You MUST NEVER mention, cite, quote, name, attribute, or link to ANY competitor market research companies, research portals, or third-party report publishers anywhere in the entire output (including "rd_content", "methodology", "metadata", "faq", and "data").
-             - Strictly forbidden names & websites: Grand View Research, Fortune Business Insights, MarketsandMarkets, Allied Market Research, Mordor Intelligence, Technavio, IMARC Group, Precedence Research, Straits Research, Emergen Research, Expert Market Research, DataM Intelligence, Polaris Market Research, Vantage Market Research, or any competitor report URLs/domains.
-             - NEVER write phrases such as "According to competitor reports...", "Market research reports suggest...", "Third-party estimates indicate...", "Secondary sources report...", etc.
-             - Authoritative In-House Voice: You are writing as a senior, seasoned domain expert. Present ALL market sizes, CAGR rates, projections, supply chain insights, and competitive analyses strictly as OUR OWN proprietary, first-party primary research and expert interview findings.
-             - When citing secondary benchmarks or trade statistics, ONLY cite official multilateral/governmental institutions (e.g., UN Comtrade, World Bank, WTO, OECD, US ITC, Eurostat) or recognized non-profit technical standards / industry trade associations. NEVER cite commercial market research firms.
-
-          2. ABSOLUTELY NO FAQ IN "rd_content":
-             - DO NOT include any FAQ, "## Frequently Asked Questions", "## FAQ", or Q&A section anywhere inside "rd_content".
-             - The FAQ content is rendered separately on our website via the dedicated "faq" JSON field. "rd_content" must strictly contain market analysis sections (e.g., Executive Overview, Drivers & Restraints, Value Chain, Trade & Supply Dynamics, Segmentation, Regional Outlook, Competitive Strategies).
-
-          Important Data Extraction Rules:
-          - "cagr": Provide a single, fixed percentage (e.g., "7.9").
-          - "marketSize": Provide a single, fixed value for the base year (e.g., "454 Million" or "20.97 Billion"). If value is 1000 Million or higher, ALWAYS express in Billion (e.g. use "20.97 Billion", never "20,972.49 Million").
-          - "volumeUnit": If this is a volume-based market report (e.g., Kilotons), output the unit here. Otherwise, leave blank.
-          - "region": Extract the geographic scope (e.g., "Global", "Canada", etc). Use the format "Global/country/contenent".
-          - "regions": Provide a geography segmentation array. For global reports: ["Continent 1(Country 1, Country 2)", "Continent 2(Country 1, Country 2)"]. For region/country reports, use directional divisions (e.g., ["East", "West"]) or just the country name.
-          ${segmentsInstruction}
-          - "companies": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.
-          - "developments": Extract any recent market developments, product launches, or acquisitions.
-
-          Methodology & Chart Data Generation Rules:
-          Act as a Senior Market Research Analyst generating the full "Research Methodology" section. You MUST integrate ALL of the static firm-standard elements below with dynamic, market-specific details you infer from the report title and market data.
-          **Mandatory Static Elements (ALL must appear):**
-          - 70/30 research split: 70–80% primary research, 20–30% secondary research.
-          - Guaranteed estimated data accuracy level of 85–90%.
-          - Top-down and bottom-up methodologies used simultaneously, validated via multi-level data triangulation.
-          - Standard financial databases: Bloomberg, Factiva, Hoovers, and PitchBook. Also cite official .gov, .org, and recognized non-profit trade association sources (ABSOLUTELY NEVER cite market research websites or competitor firms). Add HTML anchor tags with real source URLs where available for official institutions.
-          - Every report is updated to the date of purchase.
-
-          **Dynamic Elements (infer from the market title and segment/region data — be SPECIFIC, never generic):**
-          - **4–5 highly specific company types** in this market's exact value chain.
-          - **3–4 specific stakeholder job titles** we interview.
-          - **3–4 real, globally recognized industry associations or regulatory bodies** directly relevant to this market.
-          - **3–4 specific quantitative metrics** used in the bottom-up market size calculation.
-
-          **Methodology Format:** a single Markdown string. Use exactly four ### headings in this order:
-          1. ### Primary Research
-          2. ### Secondary Research & Industry Benchmarking
-          3. ### Demand Modeling & Market Estimation
-          4. ### Data Accuracy & Quality Check
-          Use bullet points under each heading. Professional, rigorous analytical tone. Escape all newlines as \\n.
-
-          For "chart_data_companies": An array of objects representing the breakdown of primary research participants by company type. Each object must have a "name" (string, the company type) and a "value" (integer, representing the percentage). The values must sum exactly to 100.
-          For "chart_data_stakeholders": An array of objects representing the breakdown of primary research participants by job designation. Each object must have a "name" (string, the job title) and a "value" (integer, representing the percentage). The values must sum exactly to 100.
-          For "regional_market_share": An object representing market share distribution by region. If the report is Global, provide major regions (e.g. {"North America": 0.27, "Europe": 0.24, "Asia-Pacific": 0.41, "South America": 0.04, "Middle East & Africa": 0.04}). If the report is regional or country-specific, provide relevant sub-regions (e.g. {"East": 0.35, "West": 0.28, "North": 0.20, "South": 0.17}). Values must be decimal proportions summing to approximately 1.0 (or 100%). If no regional or sub-regional breakdown is feasible or applicable, return null.
-
-          Return your response AS PURE JSON in this exact format:
-          {
-            "regional_market_share": {
-              "North America": 0.27,
-              "Europe": 0.24,
-              "Asia-Pacific": 0.41,
-              "South America": 0.04,
-              "Middle East & Africa": 0.04
-            },
-            "metadata": {
-              "title": "Optimized SEO title targeting the keyword (Max 60 characters)",
-              "meta_description": "Compelling meta description with CAGR and market size (Max 155 characters)"
-            },
-            "rd_content": "Extensive Markdown string (~2000 words). MUST contain exactly 6-8 distinct sections starting with ##. CRITICAL RULE 1 - ABSOLUTELY NO FAQ SECTION: Do NOT include any '## Frequently Asked Questions', '## FAQ', or Q&A section under any circumstances (FAQ has its own dedicated field below). CRITICAL RULE 2 - ZERO COMPETITOR MENTION: Never cite, mention, name, or link to any competitor market research firms or commercial report portals. All data and analysis must be presented strictly as our own proprietary primary research and direct expert analysis. If the market keyword corresponds to a physical product or tradable commodity that relies on supply chains, you MUST thoughtfully analyze if there is clear import/export, vendor, or supplier data available. If there is, conditionally include a dedicated '## Import/Export & Supplier Dynamics' section, breaking down the information either regionally or company-wise based on available data. OPTIONAL SECTIONS - pick any that genuinely add value for this specific market (do NOT include a section just to fill space; skip any that would be generic or repetitive): '## Value Chain Analysis', '## Global Trade Analysis & Supply Chain Risk Assessment', '## Regional Attractiveness & Investment Opportunity Assessment', '## Strategic White-Space Analysis', '## Procurement & Sourcing Strategy Analysis', '## Ansoff Matrix Analysis'. Only include an optional section if it meaningfully enriches the report for users or search engines. STRICT SEO REQUIREMENT: Maximize data density and scannability. Where a table genuinely aids comprehension (comparisons, feature matrices, multi-attribute overviews), use valid standard Markdown tables. For sections where prose or bullet points communicate content better, use those - do not force a table for every section. Avoid wall-of-text paragraphs (1-3 sentences max). Use bullet points liberally. Bold key metrics (CAGR, valuations). CRITICAL FORMATTING RESTRICTIONS: 1) DO NOT use LaTeX, MathJax, or output ANY mathematical equations (e.g., skip the formula for CAGR); just write the values in plain text. 2) ABSOLUTELY NO ASCII ART, TEXT DIAGRAMS, BOX DRAWINGS, OR FLOWCHARTS OF ANY KIND. NEVER output '+---+' or '|' character boxes. NEVER use arrows or connector markers like 'v', '^', '-->', '->', '=>'. NEVER use Unicode tree lines or box symbols ('├──', '│', '└──', '┌', '┐', '┴', '┬', '─', '▼', '▲'). 3) ZERO FAQ OR FREQUENTLY ASKED QUESTIONS SECTIONS. 4) ZERO COMPETITOR NAMES OR WEBSITES. EVERY piece of information MUST be conveyed exclusively via standard Markdown prose, standard Markdown bullet points ('- Point'), or valid standard Markdown tables (| Col 1 | Col 2 |\\n|---|---|\\n| Val 1 | Val 2 |).",
-            "faq": [
-              { "question": "Natural user search query (How, What, Which, Why, Who)?", "answer": "2-4 sentences, containing at least one specific number, percentage, or named entity." }
-            ],
-            "methodology": "A single Markdown string detailing the research methodology matching the rules above. Escape all newlines as \\n.",
-            "chart_data_companies": [
-              { "name": "e.g. pneumatic valve OEMs", "value": 45 }
-            ],
-            "chart_data_stakeholders": [
-              { "name": "e.g. Procurement Director", "value": 30 }
-            ],
-            "data": {
-              "region": "if no country or contenent mention in the market keyword then it will be 'global' otherwith it will be the 'country' or the contenent ",
-              "cagr": "7.9",
-              "marketSize": "454 Million",
-              "baseYear": "2025",
-              "volumeUnit": "",
-              "trends": ["trend1", "trend2"],
-              "restraints": ["restraint1", "restraint2"],
-              "drivers": ["driver1", "driver2"],
-              "challenges": ["challenge1", "challenge2"],
-              "segments": "parent1(child1, child2), parent2(child1, child2(sub_child1, sub_child2), Agricultural)",
-              "regions": "North America(USA, Canada, Mexico), Europe(Germany, UK, France), Asia Pacific(China, Japan)",
-              "companies": ["company1", "company2"],
-              "developments": ["year1 or data1: short info", "year or data: short info"]
-            }
+          if (isNewPublisher(prefix)) {
+            console.log(
+              `   [${keyword}] 📝 Assigned ${promptName} (Variation #${promptIndex})`,
+            );
           }
-
-          No JSON codeblock backticks. Just return the JSON object directly. Format as 100% valid JSON. Escape all internal double quotes inside strings (e.g., \\") and properly escape all newlines as \\n.`;
-
-          const prompt2 = `You are a Principal Market Research Director and Senior Industry Analyst at a premier global market intelligence firm. Your task is to write an original, highly authoritative, data-driven market research report entirely from scratch based on the synthesized industry reference data.
-Target Keyword: "${keyword}"
-
-**Synthesized Industry Reference Data:**
-"""
-${allCompetitorContent}
-"""
-
-**Related Primary Evidence & Authoritative Public Benchmarks:**
-"""
-${primaryEvidenceContent || "No additional primary evidence found."}
-"""
-
-CRITICAL EDITORIAL & BRANDING RULES (STRICT COMPLIANCE MANDATORY):
-1. ZERO MENTION OF COMPETITORS OR THIRD-PARTY MARKET RESEARCH WEBSITES:
-   - You MUST NEVER mention, cite, quote, name, attribute, or link to ANY competitor market research companies, research portals, or third-party report publishers anywhere in the entire output (including "rd_content", "methodology", "metadata", "faq", and "data").
-   - Strictly forbidden names & websites: Grand View Research, Fortune Business Insights, MarketsandMarkets, Allied Market Research, Mordor Intelligence, Technavio, IMARC Group, Precedence Research, Straits Research, Emergen Research, Expert Market Research, DataM Intelligence, Polaris Market Research, Vantage Market Research, or any competitor report URLs/domains.
-   - NEVER write phrases such as "According to competitor reports...", "Market research reports suggest...", "Third-party estimates indicate...", "Secondary sources report...", etc.
-   - Authoritative In-House Voice: You are writing as a senior, seasoned domain expert. Present ALL market sizes, CAGR rates, projections, supply chain insights, and competitive analyses strictly as OUR OWN proprietary, first-party primary research and expert interview findings.
-   - When citing secondary benchmarks or trade statistics, ONLY cite official multilateral/governmental institutions (e.g., UN Comtrade, World Bank, WTO, OECD, US ITC, Eurostat) or recognized non-profit technical standards / industry trade associations. NEVER cite commercial market research firms.
-
-2. ABSOLUTELY NO FAQ IN "rd_content":
-   - DO NOT include any FAQ, "## Frequently Asked Questions", "## FAQ", or Q&A section anywhere inside "rd_content".
-   - The FAQ content is rendered separately on our website via the dedicated "faq" JSON field. "rd_content" must strictly contain market analysis sections.
-
-3. DYNAMIC, ENTITY-DRIVEN HEADING ARCHITECTURE IN "rd_content":
-   - Every single ## heading must be bespoke and derived strictly from the reference data.
-   - Every heading must explicitly name a concrete technical concept, physical material, named product tier, specific end-use sector, or commercial mechanism present in the data.
-   - Keep each ## heading between 4 and 8 words in length.
-   - Incorporate "${keyword}" naturally in the first ## heading alongside the valuation timeline context.
-   - Across all subsequent ## headings, do not repeat the main keyword phrase; instead, lead with domain-specific terminology, key application verticals, upstream supply dynamics, and named segment classifications from the reference data.
-
-Important Data Extraction Rules:
-- "cagr": Provide a single, fixed percentage (e.g., "7.9").
-- "marketSize": Provide a single, fixed value for the base year (e.g., "454 Million" or "20.97 Billion"). If value is 1000 Million or higher, ALWAYS express in Billion (e.g. use "20.97 Billion", never "20,972.49 Million").
-- "volumeUnit": If this is a volume-based market report (e.g., Kilotons), output the unit here. Otherwise, leave blank.
-- "region": Extract the geographic scope (e.g., "Global", "Canada", etc). Use the format "Global/country/continent".
-- "regions": Provide a geography segmentation array. For global reports: ["Continent 1(Country 1, Country 2)", "Continent 2(Country 1, Country 2)"]. For region/country reports, use directional divisions (e.g., ["East", "West"]) or just the country name.
-${segmentsInstruction}
-- "companies": Synthesize an exhaustive list by combining data from all industry references. EXCLUDE Geography/Regional segments.
-- "developments": Extract any recent market developments, product launches, or acquisitions.
-
-Methodology & Chart Data Generation Rules:
-Act as a Senior Market Research Analyst generating the full "Research Methodology" section. You MUST integrate ALL of the static firm-standard elements below with dynamic, market-specific details you infer from the report title and market data.
-**Mandatory Static Elements (ALL must appear):**
-- 70/30 research split: 70–80% primary research, 20–30% secondary research.
-- Guaranteed estimated data accuracy level of 85–90%.
-- Top-down and bottom-up methodologies used simultaneously, validated via multi-level data triangulation.
-- Standard financial databases: Bloomberg, Factiva, Hoovers, and PitchBook. Also cite official .gov, .org, and recognized non-profit trade association sources (ABSOLUTELY NEVER cite market research websites or competitor firms). Add HTML anchor tags with real source URLs where available for official institutions.
-- Every report is updated to the date of purchase.
-
-**Dynamic Elements (infer from the market title and segment/region data — be SPECIFIC, never generic):**
-- **4–5 highly specific company types** in this market's exact value chain.
-- **3–4 specific stakeholder job titles** we interview.
-- **3–4 real, globally recognized industry associations or regulatory bodies** directly relevant to this market.
-- **3–4 specific quantitative metrics** used in the bottom-up market size calculation.
-
-**Methodology Format:** a single Markdown string. Use exactly four ### headings in this order:
-1. ### Primary Research
-2. ### Secondary Research & Industry Benchmarking
-3. ### Demand Modeling & Market Estimation
-4. ### Data Accuracy & Quality Check
-Use bullet points under each heading. Professional, rigorous analytical tone. Escape all newlines as \\n.
-
-For "chart_data_companies": An array of objects representing the breakdown of primary research participants by company type. Each object must have a "name" (string, the company type) and a "value" (integer, representing the percentage). The values must sum exactly to 100.
-For "chart_data_stakeholders": An array of objects representing the breakdown of primary research participants by job designation. Each object must have a "name" (string, the job title) and a "value" (integer, representing the percentage). The values must sum exactly to 100.
-For "regional_market_share": An object representing market share distribution by region. If the report is Global, provide major regions (e.g. {"North America": 0.27, "Europe": 0.24, "Asia-Pacific": 0.41, "South America": 0.04, "Middle East & Africa": 0.04}). If the report is regional or country-specific, provide relevant sub-regions (e.g. {"East": 0.35, "West": 0.28, "North": 0.20, "South": 0.17}). Values must be decimal proportions summing to approximately 1.0 (or 100%). If no regional or sub-regional breakdown is feasible or applicable, return null.
-
-Return your response AS PURE JSON in this exact format:
-{
-  "regional_market_share": {
-    "North America": 0.27,
-    "Europe": 0.24,
-    "Asia-Pacific": 0.41,
-    "South America": 0.04,
-    "Middle East & Africa": 0.04
-  },
-  "metadata": {
-    "title": "Optimized SEO title targeting the keyword (Max 60 characters)",
-    "meta_description": "Compelling meta description with CAGR and market size (Max 155 characters)"
-  },
-  "rd_content": "Extensive Markdown string (~2000 words). MUST contain exactly 6-8 distinct sections starting with ##, strictly adhering to the Dynamic, Entity-Driven Heading Architecture above. If the market keyword corresponds to a physical product or tradable commodity that relies on supply chains, you MUST thoughtfully analyze if there is clear import/export, vendor, or supplier data available to integrate a focused trade dynamic analysis section. STRICT SEO & READABILITY REQUIREMENT: Maximize data density and scannability. Where a table genuinely aids comprehension (comparisons, feature matrices, multi-attribute overviews), use valid standard Markdown tables (| Col 1 | Col 2 |\\n|---|---|\\n| Val 1 | Val 2 |). For sections where prose or bullet points communicate content better, use those - do not force a table for every section. Avoid wall-of-text paragraphs (1-3 sentences max). Use bullet points liberally. Bold key metrics (CAGR, valuations). CRITICAL FORMATTING RESTRICTIONS: 1) DO NOT use LaTeX, MathJax, or output ANY mathematical equations (e.g., skip the formula for CAGR); just write the values in plain text. 2) ABSOLUTELY NO ASCII ART, TEXT DIAGRAMS, BOX DRAWINGS, OR FLOWCHARTS OF ANY KIND. NEVER output '+---+' or '|' character boxes. NEVER use arrows or connector markers like 'v', '^', '-->', '->', '=>'. NEVER use Unicode tree lines or box symbols ('├──', '│', '└──', '┌', '┐', '┴', '┬', '─', '▼', '▲'). 3) ZERO FAQ OR FREQUENTLY ASKED QUESTIONS SECTIONS. 4) ZERO COMPETITOR NAMES OR WEBSITES. EVERY piece of information MUST be conveyed exclusively via standard Markdown prose, standard Markdown bullet points ('- Point'), or valid standard Markdown tables.",
-  "faq": [
-    { "question": "Natural user search query (How, What, Which, Why, Who)?", "answer": "2-4 sentences, containing at least one specific number, percentage, or named entity." }
-  ],
-  "methodology": "A single Markdown string detailing the research methodology matching the rules above. Escape all newlines as \\n.",
-  "chart_data_companies": [
-    { "name": "e.g. pneumatic valve OEMs", "value": 45 }
-  ],
-  "chart_data_stakeholders": [
-    { "name": "e.g. Procurement Director", "value": 30 }
-  ],
-  "data": {
-    "region": "if no country or continent mention in the market keyword then it will be 'global' otherwise it will be the 'country' or the continent",
-    "cagr": "7.9",
-    "marketSize": "454 Million",
-    "baseYear": "2025",
-    "volumeUnit": "",
-    "trends": ["trend1", "trend2"],
-    "restraints": ["restraint1", "restraint2"],
-    "drivers": ["driver1", "driver2"],
-    "challenges": ["challenge1", "challenge2"],
-    "segments": "parent1(child1, child2), parent2(child1, child2(sub_child1, sub_child2), Agricultural)",
-    "regions": "North America(USA, Canada, Mexico), Europe(Germany, UK, France), Asia Pacific(China, Japan)",
-    "companies": ["company1", "company2"],
-    "developments": ["year1 or data1: short info", "year or data: short info"]
-  }
-}
-
-No JSON codeblock backticks. Just return the JSON object directly. Format as 100% valid JSON. Escape all internal double quotes inside strings (e.g., \\") and properly escape all newlines as \\n.`;
-
-          const selectedPrompt = isNewPublisher(prefix) ? prompt : prompt2;
 
           let insights;
           try {
@@ -897,6 +710,9 @@ No JSON codeblock backticks. Just return the JSON object directly. Format as 100
                 current_size: marketValue,
                 current_year: insights.data?.baseYear,
                 current_unit: unit || "million",
+                market_size_series:
+                  insights.data?.market_size_series ||
+                  insights.market_size_series,
               });
 
               const chartData = {

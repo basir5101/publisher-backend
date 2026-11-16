@@ -15,14 +15,46 @@ export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
         result = await pool.query(
           `
           SELECT 
-            id, 
-            active, 
-            "marketKeyword", 
-            slug, 
-            "content_key", 
-            "categoryId"
-          FROM "report"
-          WHERE "publisher_code" = $1 AND id = $2
+            r.id, 
+            r.active, 
+            r."marketKeyword", 
+            r.slug, 
+            r."content_key", 
+            r."categoryId",
+            r."keyword_data_Id",
+            COALESCE((
+              SELECT COUNT(DISTINCT r2.publisher_code)
+              FROM "report" r2
+              WHERE (
+                (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+                OR r2."marketKeyword" = r."marketKeyword"
+              )
+              AND r2.active = true
+              AND r2.publisher_code != r.publisher_code
+            ), 0)::int AS already_published_count,
+            COALESCE((
+              SELECT ARRAY_AGG(DISTINCT r2.publisher_code)
+              FROM "report" r2
+              WHERE (
+                (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+                OR r2."marketKeyword" = r."marketKeyword"
+              )
+              AND r2.active = true
+              AND r2.publisher_code != r.publisher_code
+            ), ARRAY[]::text[]) AS published_publishers
+          FROM "report" r
+          WHERE r."publisher_code" = $1 AND r.id = $2
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "report" r2
+              WHERE (
+                (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+                OR r2."marketKeyword" = r."marketKeyword"
+              )
+              AND r2.publisher_code != r.publisher_code
+              AND r2.active = true
+              AND r2."publishedAt" >= NOW() - INTERVAL '15 days'
+            )
           LIMIT 1;
         `,
           [prefix, id],
@@ -47,26 +79,59 @@ export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
         `
     WITH PendingReports AS (
       SELECT 
-        id, 
-        active,
-        "marketKeyword",
-      slug,
-      "content_key",
-        "categoryId",
-        "publisher_code",
-        ROW_NUMBER() OVER (PARTITION BY "categoryId" ORDER BY RANDOM()) AS rn
-      FROM "report"
-      WHERE "publisher_code" = $1
-        AND active = false
+        r.id, 
+        r.active,
+        r."marketKeyword",
+        r.slug,
+        r."content_key",
+        r."categoryId",
+        r."publisher_code",
+        r."keyword_data_Id",
+        ROW_NUMBER() OVER (PARTITION BY r."categoryId" ORDER BY RANDOM()) AS rn
+      FROM "report" r
+      WHERE r."publisher_code" = $1
+        AND r.active = false
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "report" r2
+          WHERE (
+            (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+            OR r2."marketKeyword" = r."marketKeyword"
+          )
+          AND r2.publisher_code != r.publisher_code
+          AND r2.active = true
+          AND r2."publishedAt" >= NOW() - INTERVAL '15 days'
+        )
     )
     SELECT 
-      id, 
-      active,
-      "marketKeyword",
-      slug,
-      "content_key",
-      "categoryId"
-    FROM PendingReports
+      r.id, 
+      r.active, 
+      r."marketKeyword", 
+      r.slug, 
+      r."content_key", 
+      r."categoryId",
+      r."keyword_data_Id",
+      COALESCE((
+        SELECT COUNT(DISTINCT r2.publisher_code)
+        FROM "report" r2
+        WHERE (
+          (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+          OR r2."marketKeyword" = r."marketKeyword"
+        )
+        AND r2.active = true
+        AND r2.publisher_code != r.publisher_code
+      ), 0)::int AS already_published_count,
+      COALESCE((
+        SELECT ARRAY_AGG(DISTINCT r2.publisher_code)
+        FROM "report" r2
+        WHERE (
+          (r."keyword_data_Id" IS NOT NULL AND r2."keyword_data_Id" = r."keyword_data_Id")
+          OR r2."marketKeyword" = r."marketKeyword"
+        )
+        AND r2.active = true
+        AND r2.publisher_code != r.publisher_code
+      ), ARRAY[]::text[]) AS published_publishers
+    FROM PendingReports r
     ORDER BY rn ASC, RANDOM()
     LIMIT $2;
   `,
@@ -142,12 +207,63 @@ export async function findInactiveMarketKeywords(prefix, limit = 1, id = null) {
 }
 
 export function getUnitValue(str) {
-  const match = String(str || "").match(/^([\d.,]+)\s*(.+)$/);
+  if (!str) return { marketValue: 0, unit: "Million" };
+
+  // Strip currency symbols and common currency ticker abbreviations
+  let cleaned = String(str)
+    .replace(/[$€£¥]/g, "")
+    .replace(/\b(?:USD|EUR|GBP|INR|CAD|AUD)\b/gi, "")
+    .trim();
+
+  // Handle shorthand like "450M", "1.2B", "1.2T", "500k"
+  const shorthandMatch = cleaned.match(/^([\d.,]+)\s*([mbtk])\b/i);
+  if (shorthandMatch) {
+    const val = parseFloat(shorthandMatch[1].replace(/,/g, ""));
+    const code = shorthandMatch[2].toLowerCase();
+    const unitMap = {
+      m: "Million",
+      b: "Billion",
+      t: "Trillion",
+      k: "Thousand",
+    };
+    let marketValue = isNaN(val) ? 0 : val;
+    let unit = unitMap[code] || "Million";
+    if (marketValue >= 1000 && unit === "Million") {
+      marketValue = Number((marketValue / 1000).toFixed(2));
+      unit = "Billion";
+    }
+    return { marketValue, unit };
+  }
+
+  // Handle standard "454 Million", "20.97 Billion" or raw numbers "454"
+  const match = cleaned.match(/^([\d.,]+)\s*([a-zA-Z]+)?/);
   if (match) {
     let marketValue = parseFloat(match[1].replace(/,/g, ""));
-    let unit = match[2].trim();
+    let unit = (match[2] || "").trim();
 
-    if (marketValue >= 1000 && unit.toLowerCase().startsWith("million")) {
+    if (isNaN(marketValue)) {
+      return { marketValue: 0, unit: "Million" };
+    }
+
+    if (!unit) {
+      if (marketValue >= 1e9) {
+        marketValue = Number((marketValue / 1e9).toFixed(2));
+        unit = "Billion";
+      } else if (marketValue >= 1e6) {
+        marketValue = Number((marketValue / 1e6).toFixed(2));
+        unit = "Million";
+      } else {
+        unit = "Million";
+      }
+    } else {
+      const lower = unit.toLowerCase();
+      if (lower.startsWith("trill")) unit = "Trillion";
+      else if (lower.startsWith("bill")) unit = "Billion";
+      else if (lower.startsWith("mill")) unit = "Million";
+      else unit = "Million";
+    }
+
+    if (marketValue >= 1000 && unit === "Million") {
       marketValue = Number((marketValue / 1000).toFixed(2));
       unit = "Billion";
     }
@@ -510,6 +626,9 @@ export async function updateReport(summaryLog) {
       current_size: marketValue,
       current_year: baseYear,
       current_unit: unit || "million",
+      market_size_series:
+        summaryLog.market_size_series ||
+        summaryLog.data?.market_size_series,
     });
 
     const chartData = {
@@ -789,21 +908,45 @@ export function buildMarketSizeInMillions(historicalData) {
     current_size,
     current_year: baseYear,
     current_unit = "million", // Default to million if empty
-  } = historicalData;
+    market_size_series,
+  } = historicalData || {};
 
+  // 1. If market_size_series is provided as an array with valid items, use it
+  if (Array.isArray(market_size_series) && market_size_series.length > 0) {
+    const seriesResult = {};
+    for (const item of market_size_series) {
+      const year = parseInt(item.year || item.Year, 10);
+      if (!isNaN(year)) {
+        const { marketValue, unit } = getUnitValue(
+          item.value || item.size || item.val,
+        );
+        if (marketValue > 0) {
+          let valInMillions = marketValue;
+          if (unit.toLowerCase() === "billion") valInMillions *= 1000;
+          if (unit.toLowerCase() === "trillion") valInMillions *= 1000000;
+          seriesResult[year] = Math.round(valInMillions);
+        }
+      }
+    }
+    if (Object.keys(seriesResult).length >= 2) {
+      return seriesResult;
+    }
+  }
+
+  // 2. Otherwise compute from current_size and cagr
   const cleanSize = parseFloat(String(current_size).replace(/,/g, ""));
-  const cleanCagr = parseFloat(String(cagr).replace(/,/g, ""));
+  const cleanCagr = parseFloat(String(cagr).replace(/[%,\s]/g, ""));
   let cleanBaseYear = parseInt(String(baseYear), 10);
   if (isNaN(cleanBaseYear)) {
     cleanBaseYear = currentYear - 1;
   }
 
-  // Safety check: if conversion failed, return empty
-  if (isNaN(cleanSize)) return {};
+  // Safety check: if conversion failed or size is zero/negative, return empty to prevent all-0 chart JSON
+  if (isNaN(cleanSize) || cleanSize <= 0) return {};
 
   const rate = (cleanCagr || 0) / 100;
 
-  // 2. NORMALIZE UNITS
+  // 3. NORMALIZE UNITS
   let baseSizeInMillions = cleanSize;
   const unit = String(current_unit || "")
     .toLowerCase()
