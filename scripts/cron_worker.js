@@ -7,11 +7,18 @@ import { publishNewReport } from "./publish_new_report.js";
 dotenv.config();
 
 // =============================================================================
-// 🌙 DEEPSEEK OFF-PEAK ENFORCEMENT
-// DeepSeek peak hours (UTC): Mon–Fri 01:00–04:00 and 06:00–10:00
+// ⚡ AI PROVIDER & DEEPSEEK / OPENROUTER CONFIGURATION
+// Default platform: OpenRouter (DeepSeek). OpenRouter operates 24/7 at flat rates
+// without off-peak hour restrictions.
+//
+// Native DeepSeek (api.deepseek.com) peak hours (UTC): Mon–Fri 01:00–04:00 and 06:00–10:00
 // Exception: Chinese public holidays are fully off-peak.
 // Source: https://platform.deepseek.com/sign_in (pricing page)
 // =============================================================================
+
+export const DEFAULT_PROVIDER = (process.env.AI_PROVIDER || "openrouter").toLowerCase();
+export const DEFAULT_MODEL =
+  process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017";
 
 // ISO date strings (YYYY-MM-DD) of Chinese public holidays for 2025–2026.
 // Update annually. Weekends are handled separately by dayOfWeek check.
@@ -64,12 +71,13 @@ const CHINESE_PUBLIC_HOLIDAYS = new Set([
 ]);
 
 /**
- * Returns true when it is safe (cheap) to call DeepSeek API.
+ * Returns true when it is safe (cheap) to call Native DeepSeek API.
  * Peak hours (UTC, Mon–Fri, excl. Chinese public holidays):
  *   01:00–04:00  and  06:00–10:00
  * Everything else — weekends, holidays, and all other hours — is off-peak.
+ * Note: Only checked when using native DeepSeek API directly. OpenRouter runs 24/7.
  */
-function isDeepSeekOffPeak(now = new Date()) {
+export function isDeepSeekOffPeak(now = new Date()) {
   const dayOfWeek = now.getUTCDay(); // 0=Sun, 6=Sat
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   if (isWeekend) return true;
@@ -118,11 +126,15 @@ let tickTimer = null;
 /**
  * Enqueue a job. Returns a Promise that resolves when this specific job completes.
  */
-export function enqueueJob(prefix, limit) {
-  if (!isDeepSeekOffPeak()) {
+export function enqueueJob(prefix, limit, options = {}) {
+  const activeProvider = (options.provider || DEFAULT_PROVIDER).toLowerCase();
+
+  // Peak-hour restrictions only apply to native DeepSeek API (api.deepseek.com).
+  // OpenRouter operates 24/7 with flat pricing and no off-peak restrictions.
+  if (activeProvider === "deepseek" && !isDeepSeekOffPeak()) {
     const now = new Date();
     console.log(
-      `💤 [${now.toISOString()}] PEAK HOURS — Skipping [${prefix}]. DeepSeek charges full rate now. Will resume in off-peak window.`,
+      `💤 [${now.toISOString()}] PEAK HOURS (Native DeepSeek) — Skipping [${prefix}]. DeepSeek charges full rate now. Will resume in off-peak window.`,
     );
     return Promise.resolve({ skipped: true, reason: "peak_hours" });
   }
@@ -135,6 +147,9 @@ export function enqueueJob(prefix, limit) {
         `ℹ️ [${new Date().toISOString()}] Publisher [${prefix}] is already in queue. Updating limit if higher.`,
       );
       if (limit > existingJob.limit) existingJob.limit = limit;
+      if (options && Object.keys(options).length > 0) {
+        existingJob.options = { ...existingJob.options, ...options };
+      }
       const prevResolve = existingJob.resolve;
       existingJob.resolve = (val) => {
         prevResolve(val);
@@ -146,13 +161,14 @@ export function enqueueJob(prefix, limit) {
     jobQueue.push({
       prefix,
       limit,
+      options,
       resolve,
       reject,
       enqueuedAt: Date.now(),
     });
 
     console.log(
-      `📥 [${new Date().toISOString()}] Enqueued job: [${prefix}] (limit: ${limit}) | Queue depth: ${jobQueue.length}`,
+      `📥 [${new Date().toISOString()}] Enqueued job: [${prefix}] (limit: ${limit}) [${activeProvider}] | Queue depth: ${jobQueue.length}`,
     );
     processQueue();
   });
@@ -170,10 +186,14 @@ async function processQueue() {
 
   try {
     while (jobQueue.length > 0) {
-      if (!isDeepSeekOffPeak()) {
+      const nextJob = jobQueue[0];
+      const nextProvider = (nextJob.options?.provider || DEFAULT_PROVIDER).toLowerCase();
+
+      // Peak-hour check only affects native DeepSeek
+      if (nextProvider === "deepseek" && !isDeepSeekOffPeak()) {
         const now = new Date();
         console.log(
-          `💤 [${now.toISOString()}] PEAK HOURS reached during queue processing. Halting ${jobQueue.length} pending job(s) until off-peak.`,
+          `💤 [${now.toISOString()}] PEAK HOURS reached during queue processing (Native DeepSeek). Halting ${jobQueue.length} pending job(s) until off-peak.`,
         );
         while (jobQueue.length > 0) {
           const dropped = jobQueue.shift();
@@ -183,13 +203,20 @@ async function processQueue() {
       }
 
       const currentJob = jobQueue.shift();
-      const { prefix, limit, resolve, enqueuedAt } = currentJob;
+      const { prefix, limit, options: jobOptions = {}, resolve, enqueuedAt } = currentJob;
       const waitTimeSec = ((Date.now() - enqueuedAt) / 1000).toFixed(1);
       const startTime = Date.now();
 
+      const activeProvider = (jobOptions.provider || DEFAULT_PROVIDER).toLowerCase();
+      const activeModel =
+        jobOptions.model ||
+        (activeProvider === "openrouter"
+          ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+          : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
       console.log(`\n======================================================`);
       console.log(
-        `🚀 [${new Date().toISOString()}] Executing Job: Prefix [${prefix}], Limit [${limit}]`,
+        `🚀 [${new Date().toISOString()}] Executing Job: Prefix [${prefix}], Limit [${limit}] — AI: ${activeProvider} (${activeModel})`,
       );
       if (parseFloat(waitTimeSec) > 5) {
         console.log(
@@ -202,7 +229,10 @@ async function processQueue() {
         // Global watchdog: max 15 minutes per publishing batch to prevent infinite queue hang
         const JOB_TIMEOUT_MS = 15 * 60 * 1000;
         await Promise.race([
-          publishNewReport(prefix, limit),
+          publishNewReport(prefix, limit, null, null, {
+            provider: activeProvider,
+            model: activeModel,
+          }),
           new Promise((_, reject) =>
             setTimeout(
               () =>
@@ -243,14 +273,21 @@ async function processQueue() {
   }
 }
 
-export async function executePublishingJob(prefix, limit) {
-  return enqueueJob(prefix, limit);
+export async function executePublishingJob(prefix, limit, options = {}) {
+  return enqueueJob(prefix, limit, options);
 }
 
 // Mode 1: Run all scheduled publishers sequentially in one pass
-export async function runAllSequentially(overrideLimit) {
+export async function runAllSequentially(overrideLimit, options = {}) {
+  const activeProvider = (options.provider || DEFAULT_PROVIDER).toLowerCase();
+  const activeModel =
+    options.model ||
+    (activeProvider === "openrouter"
+      ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+      : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
   console.log(
-    `🚀 Starting sequential execution across all ${PUBLISHER_SCHEDULES.length} publishers...\n`,
+    `🚀 Starting sequential execution across all ${PUBLISHER_SCHEDULES.length} publishers using ${activeProvider} (${activeModel})...\n`,
   );
   for (let i = 0; i < PUBLISHER_SCHEDULES.length; i++) {
     const schedule = PUBLISHER_SCHEDULES[i];
@@ -259,7 +296,7 @@ export async function runAllSequentially(overrideLimit) {
     console.log(
       `\n📌 (${i + 1}/${PUBLISHER_SCHEDULES.length}) Processing publisher: [${schedule.prefix}] with limit: ${limit}`,
     );
-    await executePublishingJob(schedule.prefix, limit);
+    await executePublishingJob(schedule.prefix, limit, options);
 
     if (i < PUBLISHER_SCHEDULES.length - 1) {
       console.log(`⏳ Pausing 5 seconds before next publisher...`);
@@ -312,9 +349,19 @@ export async function triggerSitemapGeneration() {
 let lastSitemapTriggerKey = "";
 
 // Mode 2: Minute tick dispatcher
-export function startMinuteDispatcher() {
+export function startMinuteDispatcher(options = {}) {
+  const activeProvider = (options.provider || DEFAULT_PROVIDER).toLowerCase();
+  const activeModel =
+    options.model ||
+    (activeProvider === "openrouter"
+      ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+      : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
   console.log(
     `🕒 Clock dispatcher started. Listening for scheduled minutes of the hour...\n`,
+  );
+  console.log(
+    `🤖 AI Provider: ${activeProvider} (${activeModel}) ${activeProvider === "openrouter" ? "[24/7 flat rate, no peak restrictions]" : "[Off-peak only]"}\n`,
   );
   console.log(
     `🗺️ Daily sitemap generation scheduled at 02:00 AM and 02:00 PM local server time.\n`,
@@ -353,11 +400,12 @@ export function startMinuteDispatcher() {
       if (matchingSchedule) {
         lastTriggeredMinute = currentMinute;
         console.log(
-          `\n🔔 Hourly Schedule Trigger at :${String(currentMinute).padStart(2, "0")}: Publisher [${matchingSchedule.prefix}] (limit: ${matchingSchedule.limit})`,
+          `\n🔔 Hourly Schedule Trigger at :${String(currentMinute).padStart(2, "0")}: Publisher [${matchingSchedule.prefix}] (limit: ${matchingSchedule.limit}) [${activeProvider}]`,
         );
         executePublishingJob(
           matchingSchedule.prefix,
           matchingSchedule.limit,
+          options,
         ).catch((err) => {
           console.error(
             `❌ Background error for [${matchingSchedule.prefix}]:`,
@@ -427,14 +475,24 @@ const isInvokedDirectly =
 
 if (isInvokedDirectly) {
   const args = process.argv.slice(2);
-  const isAll = args.includes("--all");
-  const isOnce = args.includes("--once");
-  const overrideLimitArg = args.find((a) => a.startsWith("--limit="));
+  const flags = args.filter((a) => a.startsWith("--"));
+  const nonFlagArgs = args.filter((a) => !a.startsWith("--"));
+
+  const isAll = flags.includes("--all");
+  const isOnce = flags.includes("--once");
+  const isFlagOpenRouter = flags.includes("--openrouter");
+  const isFlagDeepSeek = flags.includes("--deepseek");
+  const overrideLimitArg = flags.find((a) => a.startsWith("--limit="));
+  const providerFlag = flags
+    .find((a) => a.startsWith("--provider="))
+    ?.split("=")[1];
+  const modelFlag = flags
+    .find((a) => a.startsWith("--model="))
+    ?.split("=")[1];
 
   let customPrefix = null;
   let customLimit = null;
 
-  const nonFlagArgs = args.filter((a) => !a.startsWith("--"));
   if (nonFlagArgs.length > 0) {
     customPrefix = nonFlagArgs[0].trim();
     if (nonFlagArgs[1]) {
@@ -442,9 +500,50 @@ if (isInvokedDirectly) {
     }
   }
 
+  const activeProvider = (
+    providerFlag ||
+    (isFlagOpenRouter ? "openrouter" : null) ||
+    (isFlagDeepSeek ? "deepseek" : null) ||
+    DEFAULT_PROVIDER
+  ).toLowerCase();
+
+  const activeModel =
+    modelFlag ||
+    (activeProvider === "openrouter"
+      ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+      : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
+  const runOptions = {
+    provider: activeProvider,
+    model: activeModel,
+  };
+
+  // Warn if required API key is missing
+  if (activeProvider === "openrouter" && !process.env.OPENROUTER_API_KEY) {
+    console.warn("⚠️  WARNING: OPENROUTER_API_KEY is not defined in .env!");
+  } else if (activeProvider === "deepseek" && !process.env.DEEPSEEK_API_KEY) {
+    console.warn("⚠️  WARNING: DEEPSEEK_API_KEY is not defined in .env!");
+  }
+
   console.log(`\n======================================================`);
   console.log(`🤖 Multi-Publisher SEO Automation Daemon Initialized`);
   console.log(`======================================================`);
+  console.log(
+    `   AI Provider:    ${activeProvider === "openrouter" ? "OpenRouter (DeepSeek)" : activeProvider}`,
+  );
+  console.log(`   Model:          ${activeModel}`);
+  if (activeProvider === "openrouter") {
+    console.log(
+      `   Operation:      24/7 Continuous (OpenRouter flat rate, no peak restrictions)`,
+    );
+  } else if (activeProvider === "deepseek") {
+    console.log(
+      `   DeepSeek API:   Off-peak only (UTC peak: Mon–Fri 01–04 & 06–10, excl. CN holidays)`,
+    );
+    console.log(
+      `   Currently:      ${isDeepSeekOffPeak() ? "✅ OFF-PEAK (will run)" : "🔴 PEAK HOURS (will skip until off-peak)"}`,
+    );
+  }
 
   if (isAll) {
     console.log(
@@ -458,12 +557,6 @@ if (isInvokedDirectly) {
     console.log(`   Limit:          ${customLimit || "default (1)"}`);
     console.log(`   One-time:       ${isOnce ? "Yes" : "No"}`);
   } else {
-    console.log(
-      `   DeepSeek:       Off-peak only (UTC peak: Mon–Fri 01–04 & 06–10, excl. CN holidays)`,
-    );
-    console.log(
-      `   Currently:      ${isDeepSeekOffPeak() ? "✅ OFF-PEAK (will run)" : "🔴 PEAK HOURS (will skip until off-peak)"}`,
-    );
     console.log(
       `   Mode:           Hourly Minute Dispatcher (Continuous 24/7 Daemon)`,
     );
@@ -483,16 +576,16 @@ if (isInvokedDirectly) {
       const overrideLimit = overrideLimitArg
         ? parseInt(overrideLimitArg.split("=")[1], 10)
         : null;
-      await runAllSequentially(overrideLimit);
+      await runAllSequentially(overrideLimit, runOptions);
       process.exit(0);
     } else if (customPrefix) {
       const targetLimit = customLimit || 1;
-      await executePublishingJob(customPrefix, targetLimit);
+      await executePublishingJob(customPrefix, targetLimit, runOptions);
       if (isOnce) {
         process.exit(0);
       }
     } else {
-      startMinuteDispatcher();
+      startMinuteDispatcher(runOptions);
     }
   })();
 }

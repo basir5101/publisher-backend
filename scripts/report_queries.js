@@ -698,6 +698,14 @@ export async function updateReport(summaryLog) {
       ],
     );
 
+    const formatCommaList = (val) => {
+      if (!val) return "";
+      if (Array.isArray(val)) {
+        return val.map((s) => String(s).trim()).filter(Boolean).join(", ");
+      }
+      return String(val).trim();
+    };
+
     await client.query(
       `
             UPDATE "${tables.marketReport}"
@@ -707,9 +715,9 @@ export async function updateReport(summaryLog) {
             WHERE "reportId" = $4
         `,
       [
-        drivers?.toString() || "",
-        trends?.toString() || "",
-        restraints?.toString() || "",
+        formatCommaList(drivers),
+        formatCommaList(trends),
+        formatCommaList(restraints || summaryLog.restrains),
         id,
       ],
     );

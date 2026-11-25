@@ -551,6 +551,12 @@ DATA EXTRACTION & VALUATION RULES (MANDATORY):
 - "region": Extract the overall geographic scope: if no country or continent is mentioned in the market keyword, it MUST be "Global" (otherwise the specific country/continent name).
 - "regions": A nested geography string. CRITICAL: When the report is Global, DO NOT wrap with "Global(...)". Directly list the continents/regions as parents and their respective countries as children: "North America(USA, Canada, Mexico), Europe(Germany, UK, France, Italy), Asia Pacific(China, Japan, India, South Korea), Latin America(Brazil, Mexico, Argentina), Middle East & Africa(Saudi Arabia, UAE, South Africa)". If regional or country-specific, list sub-regions and states.
 - "segments": Synthesize an exhaustive list of non-geography segments in nested format: "Parent1(Child1, Child2), Parent2(Child1, Child2)". EXCLUDE geography and regional names from segments.
+- "drivers": Synthesize 3-5 concrete primary market growth drivers (e.g., technological innovation, regulatory mandates, expanding end-use applications).
+- "restraints": Synthesize 3-5 major market restraints or bottlenecks (e.g., high initial capital expenditure, raw material supply fluctuations, regulatory hurdles).
+- "trends": Synthesize 3-5 emerging industry trends and technological shifts.
+- "challenges": Synthesize 2-4 key operational, economic, or adoption challenges.
+- "companies": Synthesize an exhaustive list (8-15) of leading market competitors and key players found in the industry references.
+- "developments": Extract 3-5 recent market developments, strategic partnerships, M&A, or product launches with year or timeframe.
 
 MARKET SIZE SERIES RULES:
 - "market_size_series": Array of {"year": "YYYY", "value": "X.X Billion" or "X.X Million"}.
@@ -636,10 +642,14 @@ Return your response AS PURE JSON in this exact format:
       { "year": "2030", "value": "664 Million" },
       { "year": "2031", "value": "716 Million" }
     ],
-    "trends": [], "restraints": [], "drivers": [], "challenges": [],
+    "trends": ["Trend 1", "Trend 2", "Trend 3"],
+    "restraints": ["Restraint 1", "Restraint 2", "Restraint 3"],
+    "drivers": ["Driver 1", "Driver 2", "Driver 3"],
+    "challenges": ["Challenge 1", "Challenge 2"],
     "segments": "By Type(Type A, Type B), By Application(Application 1, Application 2)",
     "regions": "North America(USA, Canada, Mexico), Europe(Germany, UK, France, Italy), Asia Pacific(China, Japan, India, South Korea), Latin America(Brazil, Mexico, Argentina), Middle East & Africa(Saudi Arabia, UAE, South Africa)",
-    "companies": [], "developments": []
+    "companies": ["Company A", "Company B", "Company C"],
+    "developments": ["2024: Strategic acquisition or capacity expansion", "2025: Launch of next-generation platform"]
   }
 }
 

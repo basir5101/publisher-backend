@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import http from "node:http";
 import { publishNewReport } from "./scripts/publish_new_report.js";
 import { startMinuteDispatcher, triggerSitemapGeneration } from "./scripts/cron_worker.js";
+import { isNewPublisher } from "./scripts/constants.js";
 
 dotenv.config();
 
@@ -109,7 +110,7 @@ const server = http.createServer(async (req, res) => {
           prefix,
           id,
           limit: id ? 1 : limit,
-          ...(segments && prefix === "imd" ? { segments } : {}),
+          ...(segments && isNewPublisher(prefix) ? { segments } : {}),
           acceptedAt: new Date().toISOString(),
         },
       });

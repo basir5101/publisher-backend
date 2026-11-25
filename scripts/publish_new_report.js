@@ -153,8 +153,11 @@ const sanitizeRdContent = (content) => {
  * 6. Literal unescaped control characters inside JSON strings
  */
 function parseOrRepairJSON(raw, keyword = "") {
-  if (!raw || typeof raw !== "string") {
-    throw new Error(`Invalid JSON input (type: ${typeof raw})`);
+  if (raw === null || raw === undefined || (typeof raw === "string" && !raw.trim())) {
+    throw new Error(`Received empty response from LLM`);
+  }
+  if (typeof raw !== "string") {
+    throw new Error(`Invalid JSON input (expected string, got ${typeof raw})`);
   }
 
   let cleaned = raw.trim();
@@ -296,7 +299,7 @@ function parseOrRepairJSON(raw, keyword = "") {
   }
 }
 
-import { callDeepSeek } from "./ai_calls.js";
+import { callAI, callDeepSeek, callOpenRouter } from "./ai_calls.js";
 import {
   buildBannerData,
   generateBannerScreenshot,
@@ -368,11 +371,26 @@ export async function publishNewReport(
   limit = 1,
   id = null,
   customSegments = null,
+  options = {},
 ) {
   const CONCURRENCY = parseInt(process.env.PUBLISH_CONCURRENCY, 10) || 3;
+  const activeProvider = (
+    (typeof options === "string" ? options : options?.provider) ||
+    process.env.AI_PROVIDER ||
+    "deepseek"
+  ).toLowerCase();
+
+  const activeModel =
+    (typeof options === "object" ? options?.model : null) ||
+    (activeProvider === "openrouter"
+      ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+      : activeProvider === "gemini"
+        ? process.env.GEMINI_MODEL || "gemini-3.8-flash"
+        : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
   try {
     console.log(
-      `\n🚀 [${prefix}] Publishing ${id ? `report ID: ${id}` : `${limit} report(s)`} — concurrency: ${CONCURRENCY}`,
+      `\n🚀 [${prefix}] Publishing ${id ? `report ID: ${id}` : `${limit} report(s)`} — AI: ${activeProvider} (${activeModel}) — concurrency: ${CONCURRENCY}`,
     );
     const reports = await findInactiveMarketKeywords(prefix, limit, id);
     if (!reports || reports.length === 0) {
@@ -477,12 +495,14 @@ export async function publishNewReport(
           let trustedSources = [];
           try {
             const brainstormPrompt = `You are a researcher looking for primary market data on the "${keyword}". Generate ONE optimal Google search query using advanced operators to find the most authoritative, raw trade/business data. You MUST force the query to prioritize global trade databases if applicable by using operators like (site:comtradeplus.un.org OR site:trademap.org OR site:wits.worldbank.org OR site:oecd.org OR site:dataweb.usitc.gov OR site:ec.europa.eu). You MUST also include business metrics like ("market size" OR "revenue" OR "export" OR "import"). DO NOT use "filetype:pdf", we need standard HTML pages. You MUST exclude Wikipedia by adding "-site:wikipedia.org". Return ONLY a JSON array containing this one search string. Example: ["(site:comtradeplus.un.org OR site:wits.worldbank.org OR site:.gov) \\"pneumatic valves\\" AND (\\"import\\" OR \\"market size\\") -site:wikipedia.org"]. No backticks, no markdown. Just the array.`;
-            const { text: brainstormText } = await callDeepSeek(
+            const { text: brainstormText } = await callAI(
               brainstormPrompt,
-              "deepseek-chat",
-              { response_format: null },
+              {
+                provider: activeProvider,
+                model: activeModel,
+                response_format: null,
+              },
             );
-            // const { text: brainstormText } = await callGemini(brainstormPrompt, "gemini-3.8-flash", "application/json");
             const parsedBrainstorm = parseOrRepairJSON(brainstormText, keyword);
             trustedSources = Array.isArray(parsedBrainstorm)
               ? parsedBrainstorm
@@ -619,15 +639,20 @@ export async function publishNewReport(
 
           let insights;
           try {
-            // To switch to DeepSeek natively, uncomment below:
-            const { text, usage, finishReason } = await callDeepSeek(
-              selectedPrompt,
-              "deepseek-chat",
+            console.log(
+              `   [${keyword}] 🤖 Requesting report from ${activeProvider} (${activeModel})...`,
             );
-            // const { text, usage } = await callGemini(selectedPrompt, "gemini-3.8-flash", "application/json");
+            const { text, usage, finishReason } = await callAI(
+              selectedPrompt,
+              {
+                provider: activeProvider,
+                model: activeModel,
+              },
+            );
+
             if (finishReason === "length") {
               console.warn(
-                `   [${keyword}] ⚠️ DeepSeek reached max_tokens limit (8192). JSON might be truncated.`,
+                `   [${keyword}] ⚠️ ${activeProvider} reached max_tokens limit (8192). JSON might be truncated.`,
               );
             }
 
@@ -659,8 +684,12 @@ export async function publishNewReport(
                 cagr: insights.data?.cagr,
                 marketSize: insights.data?.marketSize,
                 baseYear: insights.data?.baseYear,
-                drivers: insights.data?.drivers,
-                restraints: insights.data?.restraints,
+                drivers: insights.data?.drivers || insights.drivers,
+                restraints:
+                  insights.data?.restraints ||
+                  insights.data?.restrains ||
+                  insights.restraints ||
+                  insights.restrains,
               });
 
               const bannerResult = await generateBannerScreenshot({
@@ -832,6 +861,23 @@ export async function publishNewReport(
                 );
               }
 
+              const rawDrivers =
+                insights.data?.drivers || insights.drivers || [];
+              const rawTrends =
+                insights.data?.trends || insights.trends || [];
+              const rawRestraints =
+                insights.data?.restraints ||
+                insights.data?.restrains ||
+                insights.restraints ||
+                insights.restrains ||
+                [];
+              const rawChallenges =
+                insights.data?.challenges || insights.challenges || [];
+              const rawCompanies =
+                insights.data?.companies || insights.companies || [];
+              const rawDevelopments =
+                insights.data?.developments || insights.developments || [];
+
               const summaryLog = {
                 prefix: prefix,
                 id: id,
@@ -841,6 +887,13 @@ export async function publishNewReport(
                 meta_title: insights.metadata?.title,
                 meta_description: insights.metadata?.meta_description,
                 ...(insights.data || {}),
+                drivers: rawDrivers,
+                trends: rawTrends,
+                restraints: rawRestraints,
+                restrains: rawRestraints,
+                challenges: rawChallenges,
+                companies: rawCompanies,
+                developments: rawDevelopments,
                 faq: insights.faq || [],
                 rd_r2_key: rdKey,
                 rm_r2_key: rmKey,
@@ -886,20 +939,39 @@ export async function publishNewReport(
 
 // Run the check when this script is executed directly
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const targetPrefix = process.argv[2] || "dim";
-  const targetLimit = parseInt(process.argv[3], 10) || 1;
-  const targetId = process.argv[4]
-    ? parseInt(process.argv[4], 10) || process.argv[4]
+  const args = process.argv.slice(2);
+  const flags = args.filter((arg) => arg.startsWith("--"));
+  const positional = args.filter((arg) => !arg.startsWith("--"));
+
+  const targetPrefix = positional[0] || "dim";
+  const targetLimit = parseInt(positional[1], 10) || 1;
+  const targetId = positional[2]
+    ? parseInt(positional[2], 10) || positional[2]
     : null;
   let targetSegments = null;
-  if (process.argv[5]) {
+  if (positional[3]) {
     try {
-      targetSegments = JSON.parse(process.argv[5]);
+      targetSegments = JSON.parse(positional[3]);
     } catch (e) {
-      targetSegments = [process.argv[5]];
+      targetSegments = [positional[3]];
     }
   }
-  publishNewReport(targetPrefix, targetLimit, targetId, targetSegments)
+
+  const providerFlag = flags
+    .find((arg) => arg.startsWith("--provider="))
+    ?.split("=")[1];
+  const modelFlag = flags
+    .find((arg) => arg.startsWith("--model="))
+    ?.split("=")[1];
+  const isFlagOpenRouter = flags.includes("--openrouter");
+  const cliProvider =
+    providerFlag ||
+    (isFlagOpenRouter ? "openrouter" : positional[4] || null);
+
+  publishNewReport(targetPrefix, targetLimit, targetId, targetSegments, {
+    provider: cliProvider,
+    model: modelFlag,
+  })
     .then(() => {
       console.log(
         `🏁 Execution finished for prefix: ${targetPrefix} (limit: ${targetLimit}${targetId ? `, id: ${targetId}` : ""})`,
