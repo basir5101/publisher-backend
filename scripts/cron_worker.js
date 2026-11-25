@@ -16,7 +16,9 @@ dotenv.config();
 // Source: https://platform.deepseek.com/sign_in (pricing page)
 // =============================================================================
 
-export const DEFAULT_PROVIDER = (process.env.AI_PROVIDER || "openrouter").toLowerCase();
+export const DEFAULT_PROVIDER = (
+  process.env.AI_PROVIDER || "openrouter"
+).toLowerCase();
 export const DEFAULT_MODEL =
   process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017";
 
@@ -99,17 +101,17 @@ export function isDeepSeekOffPeak(now = new Date()) {
 // - 'amr' runs every hour at :15 with limit 5  (01:15, 02:15, ...)
 // =============================================================================
 export const PUBLISHER_SCHEDULES = [
-  { prefix: "amr", minute: 5, limit: 16 },
-  { prefix: "mra", minute: 10, limit: 16 },
-  { prefix: "dim", minute: 15, limit: 24 },
-  { prefix: "dir", minute: 20, limit: 32 },
-  { prefix: "sdi", minute: 25, limit: 12 },
-  { prefix: "miq", minute: 30, limit: 12 },
-  { prefix: "pmr", minute: 35, limit: 16 },
-  { prefix: "mpu", minute: 40, limit: 10 },
-  { prefix: "idi", minute: 45, limit: 10 },
-  { prefix: "rih", minute: 50, limit: 10 },
-  { prefix: "imd", minute: 55, limit: 5 },
+  { prefix: "amr", minute: 5, limit: 4 },
+  { prefix: "mra", minute: 10, limit: 4 },
+  { prefix: "dim", minute: 15, limit: 6 },
+  { prefix: "dir", minute: 20, limit: 8 },
+  { prefix: "sdi", minute: 25, limit: 3 },
+  { prefix: "miq", minute: 30, limit: 3 },
+  { prefix: "pmr", minute: 35, limit: 4 },
+  { prefix: "mpu", minute: 40, limit: 3 },
+  { prefix: "idi", minute: 45, limit: 3 },
+  { prefix: "rih", minute: 50, limit: 3 },
+  { prefix: "imd", minute: 55, limit: 2 },
 ];
 
 // =============================================================================
@@ -187,7 +189,9 @@ async function processQueue() {
   try {
     while (jobQueue.length > 0) {
       const nextJob = jobQueue[0];
-      const nextProvider = (nextJob.options?.provider || DEFAULT_PROVIDER).toLowerCase();
+      const nextProvider = (
+        nextJob.options?.provider || DEFAULT_PROVIDER
+      ).toLowerCase();
 
       // Peak-hour check only affects native DeepSeek
       if (nextProvider === "deepseek" && !isDeepSeekOffPeak()) {
@@ -203,11 +207,19 @@ async function processQueue() {
       }
 
       const currentJob = jobQueue.shift();
-      const { prefix, limit, options: jobOptions = {}, resolve, enqueuedAt } = currentJob;
+      const {
+        prefix,
+        limit,
+        options: jobOptions = {},
+        resolve,
+        enqueuedAt,
+      } = currentJob;
       const waitTimeSec = ((Date.now() - enqueuedAt) / 1000).toFixed(1);
       const startTime = Date.now();
 
-      const activeProvider = (jobOptions.provider || DEFAULT_PROVIDER).toLowerCase();
+      const activeProvider = (
+        jobOptions.provider || DEFAULT_PROVIDER
+      ).toLowerCase();
       const activeModel =
         jobOptions.model ||
         (activeProvider === "openrouter"
@@ -470,7 +482,10 @@ const isRunningUnderPM2 = Boolean(
 
 const isInvokedDirectly =
   isMain ||
-  (isRunningUnderPM2 && (process.argv[1] && process.argv[1].includes("cron_worker") || process.env.pm_exec_path && process.env.pm_exec_path.includes("cron_worker"))) ||
+  (isRunningUnderPM2 &&
+    ((process.argv[1] && process.argv[1].includes("cron_worker")) ||
+      (process.env.pm_exec_path &&
+        process.env.pm_exec_path.includes("cron_worker")))) ||
   (process.argv[1] && process.argv[1].includes("cron_worker"));
 
 if (isInvokedDirectly) {
@@ -486,9 +501,7 @@ if (isInvokedDirectly) {
   const providerFlag = flags
     .find((a) => a.startsWith("--provider="))
     ?.split("=")[1];
-  const modelFlag = flags
-    .find((a) => a.startsWith("--model="))
-    ?.split("=")[1];
+  const modelFlag = flags.find((a) => a.startsWith("--model="))?.split("=")[1];
 
   let customPrefix = null;
   let customLimit = null;
