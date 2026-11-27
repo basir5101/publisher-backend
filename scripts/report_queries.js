@@ -1,5 +1,5 @@
 import axios from "axios";
-import { isNewPublisher } from "./constants.js";
+import { DEFAULT_REPORT_PRICE, getNoOfPages, isNewPublisher } from "./constants.js";
 import pool from "./db.js";
 
 // Simple db call for checking payment_gateway table
@@ -441,14 +441,10 @@ export async function updatePartitionedReport(summaryLog) {
     volumeUnit: volumeUnit || "",
   };
 
-  const priceJson = price || {
-    singlePrice: "2900.00",
-    multiPrice: "4350.00",
-    enterprisePrice: "5800.00",
-  };
+  const priceJson = price || DEFAULT_REPORT_PRICE;
 
   const calculatedPages =
-    noOfPages || noOfpages || Math.floor(Math.random() * (280 - 180 + 1)) + 180;
+    noOfPages || noOfpages || parseInt(getNoOfPages(), 10);
   const calculatedBaseYear = parseInt(baseYear || baseyear, 10) || 2025;
   const finalContentKey = content_key || `rd-content/${prefix}/en/${id}.json`;
 
@@ -580,6 +576,11 @@ export async function updateReport(summaryLog) {
   try {
     await client.query("BEGIN");
 
+    const priceJson = summaryLog.price || DEFAULT_REPORT_PRICE;
+    const calculatedPages = String(
+      summaryLog.noOfPages || summaryLog.noOfpages || getNoOfPages(),
+    );
+
     let reportQuery = `
             UPDATE "${tables.report}"
             SET active = true, 
@@ -594,7 +595,9 @@ export async function updateReport(summaryLog) {
                 summery = $6, 
                 faq = $7::jsonb, 
                 method_r2key = $8, 
-                "method_updatedAt" = NOW()
+                "method_updatedAt" = NOW(),
+                price = $9::jsonb,
+                "noOfPages" = COALESCE("noOfPages", $10)
         `;
 
     const reportValues = [
@@ -606,6 +609,8 @@ export async function updateReport(summaryLog) {
       meta_description || "",
       JSON.stringify(faq),
       rm_r2_key,
+      JSON.stringify(priceJson),
+      calculatedPages,
     ];
 
     if (image_r2_key) {

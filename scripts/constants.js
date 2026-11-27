@@ -80,3 +80,13 @@ export const PUBLISHER_SITES = [
     type: "new",
   },
 ];
+
+export const DEFAULT_REPORT_PRICE = {
+  singlePrice: 4480.0,
+  multiPrice: 6720.0,
+  enterprisePrice: 8960.0,
+};
+
+export function getNoOfPages() {
+  return String(Math.floor(Math.random() * (280 - 180 + 1)) + 180);
+}

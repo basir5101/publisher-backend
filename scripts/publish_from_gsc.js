@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
-import { isNewPublisher } from "./constants.js";
+import { DEFAULT_REPORT_PRICE, getNoOfPages, isNewPublisher } from "./constants.js";
 import pool from "./db.js";
 import { publishNewReport } from "./publish_new_report.js";
 
@@ -141,8 +141,9 @@ async function publishNewPublisherGSCKeyword(gscRecord, options = {}) {
       // 5. Step 4: Insert draft row into "report"
       const baseSlug = generateSlug(market_keyword);
       const uniqueSlug = await ensureUniqueSlug(publisher_code, baseSlug, true);
+      const pages = parseInt(getNoOfPages(), 10);
 
-      console.log(`📄 Creating inactive draft in "report" table (slug: "${uniqueSlug}")...`);
+      console.log(`📄 Creating inactive draft in "report" table (slug: "${uniqueSlug}", pages: ${pages})...`);
       const insertRes = await pool.query(
         `
         INSERT INTO "report" (
@@ -150,6 +151,8 @@ async function publishNewPublisherGSCKeyword(gscRecord, options = {}) {
           slug,
           "marketKeyword",
           active,
+          price,
+          "noOfPages",
           "keyword_data_Id",
           "categoryId",
           segments,
@@ -158,10 +161,18 @@ async function publishNewPublisherGSCKeyword(gscRecord, options = {}) {
           "createdAt",
           "updatedAt"
         )
-        VALUES ($1, $2, $3, false, $4, $5, ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], NOW(), NOW())
+        VALUES ($1, $2, $3, false, $4::jsonb, $5, $6, $7, ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], NOW(), NOW())
         RETURNING id;
         `,
-        [publisher_code, uniqueSlug, market_keyword.trim(), keywordDataId, categoryId]
+        [
+          publisher_code,
+          uniqueSlug,
+          market_keyword.trim(),
+          JSON.stringify(DEFAULT_REPORT_PRICE),
+          pages,
+          keywordDataId,
+          categoryId,
+        ]
       );
       reportId = insertRes.rows[0].id;
       console.log(`   ✓ Draft created in "report" with ID: ${reportId}`);
@@ -280,7 +291,9 @@ async function publishLegacyPublisherGSCKeyword(gscRecord, options = {}) {
     } else {
       const reportIdUuid = crypto.randomUUID();
 
-      console.log(`📄 Creating inactive draft in "${prefix}_report" (keyword: "${market_keyword}", reportId: "${reportIdUuid}")...`);
+      const pages = getNoOfPages();
+
+      console.log(`📄 Creating inactive draft in "${prefix}_report" (keyword: "${market_keyword}", reportId: "${reportIdUuid}", pages: ${pages})...`);
       const insertRes = await pool.query(
         `
         INSERT INTO "${prefix}_report" (
@@ -290,15 +303,16 @@ async function publishLegacyPublisherGSCKeyword(gscRecord, options = {}) {
           "reportUrl",
           "marketData",
           "price",
+          "noOfPages",
           "categoryId",
           active,
           "createdAt",
           "updatedAt"
         )
-        VALUES ($1, $2, $3, 'not available', '{}'::jsonb, '{"singleUser": 3500, "multiUser": 5500, "enterprise": 7500}'::jsonb, $4, false, NOW(), NOW())
+        VALUES ($1, $2, $3, 'not available', '{}'::jsonb, $4::jsonb, $5, $6, false, NOW(), NOW())
         RETURNING id;
         `,
-        [reportIdUuid, market_keyword.trim(), baseSlug, categoryId]
+        [reportIdUuid, market_keyword.trim(), baseSlug, JSON.stringify(DEFAULT_REPORT_PRICE), pages, categoryId]
       );
       reportId = insertRes.rows[0].id;
 

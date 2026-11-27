@@ -304,7 +304,7 @@ import {
   buildBannerData,
   generateBannerScreenshot,
 } from "./banner_generator.js";
-import { isNewPublisher } from "./constants.js";
+import { DEFAULT_REPORT_PRICE, getNoOfPages, isNewPublisher } from "./constants.js";
 import { getSearchLocation, selectPromptForReport } from "./prompts.js";
 import pool from "./db.js";
 import { updateR2Asset, updateR2Content, updateR2Rd } from "./r2_helper.js";
@@ -874,13 +874,8 @@ export async function publishNewReport(
                 ...(insights.data || {}),
                 content_key: bundleKey,
                 image_r2_key: imageR2Key,
-                price: {
-                  singlePrice: "2900.00",
-                  multiPrice: "4350.00",
-                  enterprisePrice: "5800.00",
-                },
-                noOfPages: Math.floor(Math.random() * (280 - 180 + 1)) + 180,
-                noOfpages: Math.floor(Math.random() * (280 - 180 + 1)) + 180,
+                price: DEFAULT_REPORT_PRICE,
+                noOfPages: parseInt(getNoOfPages(), 10),
                 regional_market_share: regional_market_share,
               };
 
