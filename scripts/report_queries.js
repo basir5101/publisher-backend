@@ -680,21 +680,47 @@ export async function updateReport(summaryLog) {
       [id, rd_r2_key, JSON.stringify(chartData)],
     );
 
+    const parsedSegments = Array.isArray(segments)
+      ? segments
+      : parseNestedString(segments);
+    const parsedRegions = Array.isArray(regions)
+      ? regions
+      : parseNestedString(regions);
+    const flattenedSegments = flattenSegmentsOrRegions(segments);
+    const flattenedRegions = flattenSegmentsOrRegions(regions);
+
     await client.query(
       `
-            UPDATE "${tables.analysis}"
-            SET developments = $1::text[],
-                segments_json = $2::jsonb,
-                "regionData_json" = $3::jsonb,
-                companies = $4::text[]
-            WHERE "reportId" = $5
-        `,
+      INSERT INTO "${tables.analysis}" (
+        "reportId",
+        companies,
+        segments,
+        developments,
+        "regionData",
+        segments_json,
+        "regionData_json",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES ($1, $2::text[], $3::text[], $4::text[], $5::text[], $6::jsonb, $7::jsonb, NOW(), NOW())
+      ON CONFLICT ("reportId") 
+      DO UPDATE SET 
+        companies = EXCLUDED.companies,
+        segments = CASE WHEN array_length(EXCLUDED.segments, 1) > 0 THEN EXCLUDED.segments ELSE "${tables.analysis}".segments END,
+        developments = EXCLUDED.developments,
+        "regionData" = CASE WHEN array_length(EXCLUDED."regionData", 1) > 0 THEN EXCLUDED."regionData" ELSE "${tables.analysis}"."regionData" END,
+        segments_json = EXCLUDED.segments_json,
+        "regionData_json" = EXCLUDED."regionData_json",
+        "updatedAt" = NOW()
+      `,
       [
-        developments || [],
-        JSON.stringify(parseNestedString(segments)),
-        JSON.stringify(parseNestedString(regions)),
-        companies || [],
         id,
+        companies || [],
+        flattenedSegments || [],
+        developments || [],
+        flattenedRegions || [],
+        JSON.stringify(parsedSegments),
+        JSON.stringify(parsedRegions),
       ],
     );
 
@@ -708,17 +734,27 @@ export async function updateReport(summaryLog) {
 
     await client.query(
       `
-            UPDATE "${tables.marketReport}"
-            SET drivers = $1,
-                trends = $2,
-                restrains = $3
-            WHERE "reportId" = $4
-        `,
+      INSERT INTO "${tables.marketReport}" (
+        "reportId",
+        drivers,
+        trends,
+        restrains,
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      ON CONFLICT ("reportId") 
+      DO UPDATE SET 
+        drivers = EXCLUDED.drivers,
+        trends = EXCLUDED.trends,
+        restrains = EXCLUDED.restrains,
+        "updatedAt" = NOW()
+      `,
       [
+        id,
         formatCommaList(drivers),
         formatCommaList(trends),
         formatCommaList(restraints || summaryLog.restrains),
-        id,
       ],
     );
 

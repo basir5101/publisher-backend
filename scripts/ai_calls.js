@@ -111,7 +111,7 @@ export async function callOpenRouter(prompt, modelName = process.env.OPENROUTER_
         const order = process.env.OPENROUTER_PROVIDER_ORDER
             ? process.env.OPENROUTER_PROVIDER_ORDER.split(',').map(s => s.trim()).filter(Boolean)
             : ['DeepInfra'];
-        const allowFallbacks = process.env.OPENROUTER_ALLOW_FALLBACKS === 'true';
+        const allowFallbacks = process.env.OPENROUTER_ALLOW_FALLBACKS !== 'false';
 
         payload.provider = {
             order,
@@ -177,7 +177,8 @@ export async function callOpenRouter(prompt, modelName = process.env.OPENROUTER_
             }
         };
     } catch (error) {
-        const errMsg = error.response?.data?.error?.message || error.message;
+        const errObj = error.response?.data?.error;
+        const errMsg = errObj?.metadata?.raw || errObj?.message || error.message;
         throw new Error(`OpenRouter API error: ${errMsg}`);
     }
 }

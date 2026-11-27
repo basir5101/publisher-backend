@@ -308,6 +308,7 @@ import { isNewPublisher } from "./constants.js";
 import { getSearchLocation, selectPromptForReport } from "./prompts.js";
 import pool from "./db.js";
 import { updateR2Asset, updateR2Content, updateR2Rd } from "./r2_helper.js";
+import { publishFromGSC } from "./publish_from_gsc.js";
 import {
   buildMarketSizeInMillions,
   findInactiveMarketKeywords,
@@ -373,20 +374,63 @@ export async function publishNewReport(
   customSegments = null,
   options = {},
 ) {
+  const opts = typeof options === "string" ? { provider: options } : (options || {});
   const CONCURRENCY = parseInt(process.env.PUBLISH_CONCURRENCY, 10) || 3;
   const activeProvider = (
-    (typeof options === "string" ? options : options?.provider) ||
+    opts.provider ||
     process.env.AI_PROVIDER ||
     "deepseek"
   ).toLowerCase();
 
   const activeModel =
-    (typeof options === "object" ? options?.model : null) ||
+    opts.model ||
     (activeProvider === "openrouter"
       ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
       : activeProvider === "gemini"
         ? process.env.GEMINI_MODEL || "gemini-3.8-flash"
         : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
+  // 1. PRIORITY: Check GSCKeywords table first when no specific report ID is requested
+  if (!id && !opts.skipGSC) {
+    try {
+      console.log(
+        `\n🎯 [${prefix}] Checking GSCKeywords table for prioritized publishing (target limit: ${limit})...`,
+      );
+      const gscRes = await publishFromGSC({
+        publisher: prefix,
+        limit: limit,
+        provider: activeProvider,
+        model: activeModel,
+        dryRun: opts.dryRun || false,
+      });
+
+      const successfulGSC = gscRes.successful || 0;
+      const remainingLimit = limit - successfulGSC;
+
+      if (remainingLimit <= 0) {
+        console.log(
+          `✅ [${prefix}] Target batch limit of ${limit} fully satisfied from GSCKeywords.`,
+        );
+        return;
+      }
+
+      if (successfulGSC > 0) {
+        console.log(
+          `ℹ️ [${prefix}] ${successfulGSC} report(s) published from GSCKeywords. Falling back to existing backlog for remaining ${remainingLimit} report(s)...`,
+        );
+        limit = remainingLimit;
+      } else {
+        console.log(
+          `ℹ️ [${prefix}] No pending GSCKeywords available. Falling back to existing inactive backlog...`,
+        );
+      }
+    } catch (gscErr) {
+      console.error(
+        `⚠️ [${prefix}] Error checking GSCKeywords, falling back to standard backlog:`,
+        gscErr.message,
+      );
+    }
+  }
 
   try {
     console.log(
@@ -968,9 +1012,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     providerFlag ||
     (isFlagOpenRouter ? "openrouter" : positional[4] || null);
 
+  const skipGSC = flags.includes("--skip-gsc");
+  const dryRun = flags.includes("--dry-run");
+
   publishNewReport(targetPrefix, targetLimit, targetId, targetSegments, {
     provider: cliProvider,
     model: modelFlag,
+    skipGSC,
+    dryRun,
   })
     .then(() => {
       console.log(

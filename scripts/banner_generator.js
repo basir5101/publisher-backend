@@ -211,6 +211,24 @@ export const PUBLISHER_THEMES = {
       chartStroke: "#2B7FFF",
     },
   },
+  ira: {
+    logoSrc:
+      "https://images.datainsightsmarket.com/assets/publishers/zocSHaJG7bSPznB4logo.png",
+    theme: {
+      primaryDark: "#0b192c",
+      slateDark: "#2c3e50",
+      tealMain: "#d46238",
+      tealDark: "#aa4e2d",
+      bgGradientStart: "#fcf4f1",
+      bgGradientEnd: "#f6e0d7",
+      baseHeaderStart: "#da7a56",
+      baseHeaderEnd: "#b45330",
+      forecastHeaderStart: "#7f3b22",
+      forecastHeaderEnd: "#552716",
+      chartBadgeBg: "#944527",
+      chartStroke: "#d46238",
+    },
+  },
 };
 
 /**

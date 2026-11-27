@@ -101,17 +101,18 @@ export function isDeepSeekOffPeak(now = new Date()) {
 // - 'amr' runs every hour at :15 with limit 5  (01:15, 02:15, ...)
 // =============================================================================
 export const PUBLISHER_SCHEDULES = [
-  { prefix: "amr", minute: 5, limit: 4 },
-  { prefix: "mra", minute: 10, limit: 4 },
-  { prefix: "dim", minute: 15, limit: 6 },
-  { prefix: "dir", minute: 20, limit: 8 },
-  { prefix: "sdi", minute: 25, limit: 3 },
-  { prefix: "miq", minute: 30, limit: 3 },
-  { prefix: "pmr", minute: 35, limit: 4 },
-  { prefix: "mpu", minute: 40, limit: 3 },
-  { prefix: "idi", minute: 45, limit: 3 },
-  { prefix: "rih", minute: 50, limit: 3 },
-  { prefix: "imd", minute: 55, limit: 2 },
+  { prefix: "amr", minute: 5, limit: 8 },
+  { prefix: "mra", minute: 10, limit: 8 },
+  { prefix: "dim", minute: 15, limit: 12 },
+  { prefix: "dir", minute: 20, limit: 16 },
+  { prefix: "sdi", minute: 25, limit: 6 },
+  { prefix: "miq", minute: 30, limit: 6 },
+  { prefix: "pmr", minute: 35, limit: 8 },
+  { prefix: "mpu", minute: 40, limit: 6 },
+  { prefix: "idi", minute: 45, limit: 6 },
+  { prefix: "rih", minute: 50, limit: 6 },
+  { prefix: "imd", minute: 55, limit: 4 },
+  { prefix: "ira", minute: 55, limit: 2 },
 ];
 
 // =============================================================================
@@ -497,108 +498,124 @@ if (isInvokedDirectly) {
   const isOnce = flags.includes("--once");
   const isFlagOpenRouter = flags.includes("--openrouter");
   const isFlagDeepSeek = flags.includes("--deepseek");
+  const isSitemap =
+    flags.includes("--sitemap") ||
+    args.includes("--sitemap") ||
+    nonFlagArgs[0] === "sitemap";
   const overrideLimitArg = flags.find((a) => a.startsWith("--limit="));
   const providerFlag = flags
     .find((a) => a.startsWith("--provider="))
     ?.split("=")[1];
   const modelFlag = flags.find((a) => a.startsWith("--model="))?.split("=")[1];
 
-  let customPrefix = null;
-  let customLimit = null;
-
-  if (nonFlagArgs.length > 0) {
-    customPrefix = nonFlagArgs[0].trim();
-    if (nonFlagArgs[1]) {
-      customLimit = parseInt(nonFlagArgs[1], 10);
-    }
-  }
-
-  const activeProvider = (
-    providerFlag ||
-    (isFlagOpenRouter ? "openrouter" : null) ||
-    (isFlagDeepSeek ? "deepseek" : null) ||
-    DEFAULT_PROVIDER
-  ).toLowerCase();
-
-  const activeModel =
-    modelFlag ||
-    (activeProvider === "openrouter"
-      ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
-      : process.env.DEEPSEEK_MODEL || "deepseek-chat");
-
-  const runOptions = {
-    provider: activeProvider,
-    model: activeModel,
-  };
-
-  // Warn if required API key is missing
-  if (activeProvider === "openrouter" && !process.env.OPENROUTER_API_KEY) {
-    console.warn("⚠️  WARNING: OPENROUTER_API_KEY is not defined in .env!");
-  } else if (activeProvider === "deepseek" && !process.env.DEEPSEEK_API_KEY) {
-    console.warn("⚠️  WARNING: DEEPSEEK_API_KEY is not defined in .env!");
-  }
-
-  console.log(`\n======================================================`);
-  console.log(`🤖 Multi-Publisher SEO Automation Daemon Initialized`);
-  console.log(`======================================================`);
-  console.log(
-    `   AI Provider:    ${activeProvider === "openrouter" ? "OpenRouter (DeepSeek)" : activeProvider}`,
-  );
-  console.log(`   Model:          ${activeModel}`);
-  if (activeProvider === "openrouter") {
-    console.log(
-      `   Operation:      24/7 Continuous (OpenRouter flat rate, no peak restrictions)`,
-    );
-  } else if (activeProvider === "deepseek") {
-    console.log(
-      `   DeepSeek API:   Off-peak only (UTC peak: Mon–Fri 01–04 & 06–10, excl. CN holidays)`,
-    );
-    console.log(
-      `   Currently:      ${isDeepSeekOffPeak() ? "✅ OFF-PEAK (will run)" : "🔴 PEAK HOURS (will skip until off-peak)"}`,
-    );
-  }
-
-  if (isAll) {
-    console.log(
-      `   Mode:           Sequential Loop through ALL publishers (--all)`,
-    );
-    console.log(
-      `   Prefixes:       ${PUBLISHER_SCHEDULES.map((s) => `${s.prefix} (limit ${s.limit})`).join(", ")}`,
-    );
-  } else if (customPrefix) {
-    console.log(`   Mode:           Ad-hoc single publisher [${customPrefix}]`);
-    console.log(`   Limit:          ${customLimit || "default (1)"}`);
-    console.log(`   One-time:       ${isOnce ? "Yes" : "No"}`);
+  if (isSitemap) {
+    (async () => {
+      console.log(`\n======================================================`);
+      console.log(`🗺️ Manual Sitemap Generation Triggered`);
+      console.log(`======================================================\n`);
+      const result = await triggerSitemapGeneration();
+      process.exit(result.success ? 0 : 1);
+    })();
   } else {
+    let customPrefix = null;
+    let customLimit = null;
+
+    if (nonFlagArgs.length > 0) {
+      customPrefix = nonFlagArgs[0].trim();
+      if (nonFlagArgs[1]) {
+        customLimit = parseInt(nonFlagArgs[1], 10);
+      }
+    }
+
+    const activeProvider = (
+      providerFlag ||
+      (isFlagOpenRouter ? "openrouter" : null) ||
+      (isFlagDeepSeek ? "deepseek" : null) ||
+      DEFAULT_PROVIDER
+    ).toLowerCase();
+
+    const activeModel =
+      modelFlag ||
+      (activeProvider === "openrouter"
+        ? process.env.OPENROUTER_MODEL || "deepseek/deepseek-v4.1-flash-1017"
+        : process.env.DEEPSEEK_MODEL || "deepseek-chat");
+
+    const runOptions = {
+      provider: activeProvider,
+      model: activeModel,
+    };
+
+    // Warn if required API key is missing
+    if (activeProvider === "openrouter" && !process.env.OPENROUTER_API_KEY) {
+      console.warn("⚠️  WARNING: OPENROUTER_API_KEY is not defined in .env!");
+    } else if (activeProvider === "deepseek" && !process.env.DEEPSEEK_API_KEY) {
+      console.warn("⚠️  WARNING: DEEPSEEK_API_KEY is not defined in .env!");
+    }
+
+    console.log(`\n======================================================`);
+    console.log(`🤖 Multi-Publisher SEO Automation Daemon Initialized`);
+    console.log(`======================================================`);
     console.log(
-      `   Mode:           Hourly Minute Dispatcher (Continuous 24/7 Daemon)`,
+      `   AI Provider:    ${activeProvider === "openrouter" ? "OpenRouter (DeepSeek)" : activeProvider}`,
     );
-    console.log(`   Schedules:`);
-    for (const item of PUBLISHER_SCHEDULES) {
-      const minStr = String(item.minute).padStart(2, "0");
+    console.log(`   Model:          ${activeModel}`);
+    if (activeProvider === "openrouter") {
       console.log(
-        `     - [${item.prefix}]: Every hour at :${minStr} (Query Limit: ${item.limit})`,
+        `   Operation:      24/7 Continuous (OpenRouter flat rate, no peak restrictions)`,
+      );
+    } else if (activeProvider === "deepseek") {
+      console.log(
+        `   DeepSeek API:   Off-peak only (UTC peak: Mon–Fri 01–04 & 06–10, excl. CN holidays)`,
+      );
+      console.log(
+        `   Currently:      ${isDeepSeekOffPeak() ? "✅ OFF-PEAK (will run)" : "🔴 PEAK HOURS (will skip until off-peak)"}`,
       );
     }
-  }
-  console.log(`   Environment:    ${process.env.NODE_ENV || "production"}`);
-  console.log(`======================================================\n`);
 
-  (async () => {
     if (isAll) {
-      const overrideLimit = overrideLimitArg
-        ? parseInt(overrideLimitArg.split("=")[1], 10)
-        : null;
-      await runAllSequentially(overrideLimit, runOptions);
-      process.exit(0);
+      console.log(
+        `   Mode:           Sequential Loop through ALL publishers (--all)`,
+      );
+      console.log(
+        `   Prefixes:       ${PUBLISHER_SCHEDULES.map((s) => `${s.prefix} (limit ${s.limit})`).join(", ")}`,
+      );
     } else if (customPrefix) {
-      const targetLimit = customLimit || 1;
-      await executePublishingJob(customPrefix, targetLimit, runOptions);
-      if (isOnce) {
-        process.exit(0);
-      }
+      console.log(
+        `   Mode:           Ad-hoc single publisher [${customPrefix}]`,
+      );
+      console.log(`   Limit:          ${customLimit || "default (1)"}`);
+      console.log(`   One-time:       ${isOnce ? "Yes" : "No"}`);
     } else {
-      startMinuteDispatcher(runOptions);
+      console.log(
+        `   Mode:           Hourly Minute Dispatcher (Continuous 24/7 Daemon)`,
+      );
+      console.log(`   Schedules:`);
+      for (const item of PUBLISHER_SCHEDULES) {
+        const minStr = String(item.minute).padStart(2, "0");
+        console.log(
+          `     - [${item.prefix}]: Every hour at :${minStr} (Query Limit: ${item.limit})`,
+        );
+      }
     }
-  })();
+    console.log(`   Environment:    ${process.env.NODE_ENV || "production"}`);
+    console.log(`======================================================\n`);
+
+    (async () => {
+      if (isAll) {
+        const overrideLimit = overrideLimitArg
+          ? parseInt(overrideLimitArg.split("=")[1], 10)
+          : null;
+        await runAllSequentially(overrideLimit, runOptions);
+        process.exit(0);
+      } else if (customPrefix) {
+        const targetLimit = customLimit || 1;
+        await executePublishingJob(customPrefix, targetLimit, runOptions);
+        if (isOnce) {
+          process.exit(0);
+        }
+      } else {
+        startMinuteDispatcher(runOptions);
+      }
+    })();
+  }
 }
